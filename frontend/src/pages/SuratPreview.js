@@ -225,15 +225,19 @@ export default function SuratPreview() {
             </table>
           )}
 
-          {/* Date - only on SBBK per docx, left aligned but appears just before signature block */}
-          {isSBBK && (
-            <div style={{ marginTop: "14pt", fontSize: "12pt" }}>
+          {/* Date / place line above signature - right aligned per template */}
+          {isSBBK ? (
+            <div style={{ marginTop: "14pt", fontSize: "12pt", textAlign: "right", paddingRight: "1.5in" }}>
               Jember, <Editable value={doc.tanggal_keluar} onChange={(v) => update({ tanggal_keluar: v })} />
+            </div>
+          ) : (
+            <div style={{ marginTop: "14pt", fontSize: "12pt", textAlign: "right", paddingRight: "1.5in" }}>
+              Yang meminta
             </div>
           )}
 
           {/* Signature table - 3 equal columns; middle empty for spacing */}
-          <table style={{ width: "100%", marginTop: isSBBK ? "6pt" : "24pt", fontSize: "12pt", borderCollapse: "collapse" }}>
+          <table style={{ width: "100%", marginTop: "6pt", fontSize: "12pt", borderCollapse: "collapse" }}>
             <colgroup>
               <col style={{ width: "33.33%" }} />
               <col style={{ width: "33.33%" }} />
