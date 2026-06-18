@@ -763,33 +763,211 @@ def _fmt_tanggal(dt_str: str) -> str:
 
 def _render_template(html_text: str, ctx: dict, rows: list) -> str:
     """Replace {{key}} placeholders + expand row template.
-    Row mechanism: any <tr> containing {{row.*}} is replaced IN-PLACE with one <tr> per data row.
+    If NO placeholders detected, falls back to auto-fill based on table structure.
     """
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(html_text, "lxml")
 
-    # Find all <tr>s containing row placeholders and expand each one in-place
-    row_keys = set(re.findall(r"\{\{\s*row\.([a-zA-Z0-9_]+)\s*\}\}", str(soup)))
-    if row_keys:
-        for tr in list(soup.find_all("tr")):
-            tr_str = str(tr)
-            if "{{row." not in tr_str and "{{ row." not in tr_str:
-                continue
-            for r in rows:
-                new_html = tr_str
-                for k in row_keys:
-                    val = "" if r.get(k) is None else str(r.get(k))
-                    new_html = re.sub(r"\{\{\s*row\." + re.escape(k) + r"\s*\}\}", val, new_html)
-                new_tr = BeautifulSoup(new_html, "lxml").find("tr")
-                if new_tr:
-                    tr.insert_before(new_tr)
-            tr.extract()
+    raw = str(soup)
+    has_explicit_placeholder = "{{" in raw
 
-    # Replace simple {{key}} placeholders in remaining content
-    new_html = str(soup)
-    for k, v in ctx.items():
-        new_html = re.sub(r"\{\{\s*" + re.escape(k) + r"\s*\}\}", "" if v is None else str(v), new_html)
-    return new_html
+    if has_explicit_placeholder:
+        # --- Explicit placeholder mode ---
+        row_keys = set(re.findall(r"\{\{\s*row\.([a-zA-Z0-9_]+)\s*\}\}", raw))
+        if row_keys:
+            for tr in list(soup.find_all("tr")):
+                tr_str = str(tr)
+                if "{{row." not in tr_str and "{{ row." not in tr_str:
+                    continue
+                for r in rows:
+                    new_html = tr_str
+                    for k in row_keys:
+                        val = "" if r.get(k) is None else str(r.get(k))
+                        new_html = re.sub(r"\{\{\s*row\." + re.escape(k) + r"\s*\}\}", val, new_html)
+                    new_tr = BeautifulSoup(new_html, "lxml").find("tr")
+                    if new_tr:
+                        tr.insert_before(new_tr)
+                tr.extract()
+        result = str(soup)
+        for k, v in ctx.items():
+            result = re.sub(r"\{\{\s*" + re.escape(k) + r"\s*\}\}", "" if v is None else str(v), result)
+        return result
+
+    # --- Auto-fill mode (no placeholders found) ---
+    def _txt(el):
+        return el.get_text(separator=" ", strip=True) if el else ""
+
+    # 1) Inject nomor after "Nomor :" anywhere in document
+    for tag in soup.find_all(["p", "span", "div", "td"]):
+        t = _txt(tag)
+        if re.match(r"^\s*Nomor\s*:\s*$", t):
+            # Append nomor text to this element
+            tag.append(" " + str(ctx.get("nomor", "")))
+            break
+        if t.startswith("Nomor :") and len(t) < 15:
+            # Replace whole text
+            for child in list(tag.children):
+                child.extract()
+            tag.append(f"Nomor : {ctx.get('nomor', '')}")
+            break
+
+    # 2) Fill info table: rows with label + ":" + empty cell
+    LABEL_MAP = {
+        "unit kerja": "unit_kerja",
+        "no. dan tgl. spb": "tanggal_spb",
+        "tanggal permintaan": "tanggal_permintaan",
+        "nama peminta": "nama_peminta",
+        "keperluan": "keperluan",
+    }
+    for tr in soup.find_all("tr"):
+        tds = tr.find_all(["td", "th"])
+        if len(tds) < 2:
+            continue
+        label = _txt(tds[0]).lower().strip().rstrip(":").strip()
+        if label in LABEL_MAP:
+            target_cell = tds[-1]  # last cell is the value cell
+            if not _txt(target_cell):
+                key = LABEL_MAP[label]
+                val = ctx.get(key, "")
+                if val:
+                    # Insert as a paragraph to preserve doc styling
+                    new_p = soup.new_tag("p")
+                    new_p.string = str(val)
+                    target_cell.append(new_p)
+
+    # 3) Data table auto-fill: find table whose header contains "Nama Barang"
+    target_table = None
+    for tbl in soup.find_all("table"):
+        first_tr = tbl.find("tr")
+        if not first_tr:
+            continue
+        headers_text = _txt(first_tr).lower()
+        if "nama barang" in headers_text:
+            target_table = tbl
+            break
+
+    if target_table and rows:
+        all_trs = target_table.find_all("tr")
+        # Identify header rows (first 1 or 2 rows are headers). Header row contains "No." and "Nama Barang"
+        header_count = 1
+        if len(all_trs) >= 2:
+            r1_text = _txt(all_trs[1]).lower()
+            # If row 2 has "permintaan" or "disetujui" then header is 2 rows
+            if "permintaan" in r1_text or "disetujui" in r1_text:
+                header_count = 2
+        header_rows = all_trs[:header_count]
+        data_rows = all_trs[header_count:]
+
+        # Determine column mapping from header text
+        col_keys = []
+        if header_count == 2:
+            # Build combined header (top + sub-headers)
+            top_cells = header_rows[0].find_all(["td", "th"])
+            sub_cells = header_rows[1].find_all(["td", "th"])
+            # Build flat list by considering colspan
+            top_flat = []
+            for c in top_cells:
+                cs = int(c.get("colspan", 1))
+                for _ in range(cs):
+                    top_flat.append(_txt(c).lower())
+            # Distribute sub cells under top
+            sub_iter = iter(sub_cells)
+            for i, t in enumerate(top_flat):
+                if "jumlah" in t and i < len(top_flat) - 1 and top_flat[i] == top_flat[i + 1]:
+                    # this is a merged "Jumlah" header spanning permintaan|disetujui
+                    sub = _txt(next(sub_iter, soup.new_tag("td"))).lower()
+                    col_keys.append("permintaan" if "perminta" in sub else "disetujui")
+                else:
+                    col_keys.append(t)
+        else:
+            col_keys = [_txt(c).lower() for c in header_rows[0].find_all(["td", "th"])]
+
+        # Map header label -> data key
+        def header_to_key(h):
+            h = h.strip()
+            if "no" == h or h.startswith("no."):
+                return "no"
+            if "nama" in h:
+                return "nama"
+            if "satuan" in h:
+                return "satuan"
+            if "jumlah" in h:
+                return "jumlah"
+            if "perminta" in h:
+                return "permintaan"
+            if "disetuj" in h:
+                return "disetujui"
+            if "keperluan" in h:
+                return "keperluan"
+            if "keterangan" in h:
+                return "keterangan"
+            return None
+
+        data_keys = [header_to_key(h) for h in col_keys]
+
+        # Take first template data row to clone styling
+        template_row = data_rows[0] if data_rows else None
+
+        if template_row:
+            # Remove all existing data rows
+            for r in data_rows:
+                r.extract()
+            # Build a new row per data item
+            for r in rows:
+                new_tr = BeautifulSoup(str(template_row), "lxml").find("tr")
+                cells = new_tr.find_all(["td", "th"])
+                for ci, cell in enumerate(cells):
+                    if ci >= len(data_keys):
+                        break
+                    key = data_keys[ci]
+                    val = r.get(key, "") if key else ""
+                    # Clear cell content while preserving cell styling
+                    for ch in list(cell.children):
+                        ch.extract()
+                    if val != "":
+                        new_p = soup.new_tag("p")
+                        new_p.string = str(val)
+                        cell.append(new_p)
+                target_table.append(new_tr)
+
+    # 4) Fill signature block: detect tables with "NIP." labels and try to fill names above
+    # Look for a table with 3 cells in last row containing "NIP."
+    for tbl in soup.find_all("table"):
+        trs = tbl.find_all("tr")
+        if len(trs) < 2:
+            continue
+        last_tr = trs[-1]
+        cells = last_tr.find_all(["td", "th"])
+        if not (len(cells) >= 2 and all("NIP" in _txt(c) for c in cells if _txt(c))):
+            continue
+        # This is a signature table. First row = labels (Pengelola Gudang / Pejabat Struktural / Yang Menerima)
+        first_cells = trs[0].find_all(["td", "th"])
+        if len(first_cells) < 2:
+            continue
+        labels = [_txt(c).lower() for c in first_cells]
+        # The row right above NIP row (or 2nd from last) is for names
+        name_row = trs[-2] if len(trs) >= 2 else None
+        if name_row:
+            name_cells = name_row.find_all(["td", "th"])
+            for i, cell in enumerate(name_cells):
+                if i >= len(labels):
+                    break
+                lab = labels[i] if i < len(labels) else ""
+                val = ""
+                if "yang menerima" in lab or "penerima" in lab:
+                    val = ctx.get("nama_penerima", "")
+                elif "pengelola" in lab:
+                    val = ctx.get("nama_pengelola", "")
+                elif "pejabat" in lab or "menyetujui" in lab:
+                    val = ctx.get("nama_pejabat", "") or ctx.get("approver_name", "")
+                elif "meminta" in lab:
+                    val = ctx.get("nama_peminta", "")
+                if val and not _txt(cell):
+                    new_p = soup.new_tag("p")
+                    new_p.string = str(val)
+                    cell.append(new_p)
+
+    return str(soup)
 
 def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
     rows = []

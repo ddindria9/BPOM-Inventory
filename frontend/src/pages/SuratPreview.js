@@ -41,7 +41,34 @@ export default function SuratPreview() {
     setTimeout(() => {
       try {
         const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open(); doc.write(html); doc.close();
+        doc.open();
+        // Inject CSS to make all blocks visually editable + cleaner table borders
+        const editableCSS = `
+          <style>
+            body { padding: 24px; font-family: 'Times New Roman', serif; cursor: text; }
+            [contenteditable="true"]:focus, [contenteditable="true"]:hover { background: #FEF3C7; outline: 1px dashed #1E3A8A; }
+            table { border-collapse: collapse; }
+            td, th { border: 1px solid #000; }
+            @media print {
+              body { padding: 0; }
+              [contenteditable="true"]:focus, [contenteditable="true"]:hover { background: transparent; outline: none; }
+            }
+          </style>
+        `;
+        // Insert CSS before closing head
+        let modifiedHtml = html;
+        if (/<\/head>/i.test(modifiedHtml)) {
+          modifiedHtml = modifiedHtml.replace(/<\/head>/i, editableCSS + "</head>");
+        } else {
+          modifiedHtml = editableCSS + modifiedHtml;
+        }
+        doc.write(modifiedHtml);
+        doc.close();
+        // Make body contentEditable so user can directly edit
+        if (doc.body) {
+          doc.body.setAttribute("contenteditable", "true");
+          doc.body.setAttribute("spellcheck", "false");
+        }
       } catch {}
     }, 30);
   }, [html, status]);
