@@ -763,41 +763,79 @@ def _fmt_tanggal(dt_str: str) -> str:
 
 def _render_template(html_text: str, ctx: dict, rows: list) -> str:
     """Replace {{key}} placeholders + expand row template.
-    Row mechanism: if any {{row.*}} placeholder exists inside a <tr>, that <tr> is duplicated per row.
+    Row mechanism: any <tr> containing {{row.*}} is replaced IN-PLACE with one <tr> per data row.
     """
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(html_text, "lxml")
 
-    # 1) Expand row template inside <tr> that contains any {{row.xxx}}
-    row_tr_keys = set(re.findall(r"\{\{\s*row\.([a-zA-Z0-9_]+)\s*\}\}", str(soup)))
-    if row_tr_keys:
+    # Find all <tr>s containing row placeholders and expand each one in-place
+    row_keys = set(re.findall(r"\{\{\s*row\.([a-zA-Z0-9_]+)\s*\}\}", str(soup)))
+    if row_keys:
         for tr in list(soup.find_all("tr")):
             tr_str = str(tr)
             if "{{row." not in tr_str and "{{ row." not in tr_str:
                 continue
-            new_html_parts = []
             for r in rows:
-                row_html = tr_str
-                for k in row_tr_keys:
+                new_html = tr_str
+                for k in row_keys:
                     val = "" if r.get(k) is None else str(r.get(k))
-                    row_html = re.sub(r"\{\{\s*row\." + re.escape(k) + r"\s*\}\}", val, row_html)
-                new_html_parts.append(row_html)
-            replacement = BeautifulSoup("".join(new_html_parts), "lxml")
-            # Replace tr with new fragments (which contain <tr>s) - extract tr children
-            new_trs = replacement.find_all("tr")
-            if new_trs:
-                parent = tr.parent
-                idx = list(parent.children).index(tr) if tr in parent.children else None
-                tr.extract()
-                for nt in new_trs:
-                    parent.append(nt)
+                    new_html = re.sub(r"\{\{\s*row\." + re.escape(k) + r"\s*\}\}", val, new_html)
+                new_tr = BeautifulSoup(new_html, "lxml").find("tr")
+                if new_tr:
+                    tr.insert_before(new_tr)
+            tr.extract()
 
-    # 2) Replace simple {{key}} placeholders in remaining content
+    # Replace simple {{key}} placeholders in remaining content
     new_html = str(soup)
     for k, v in ctx.items():
         new_html = re.sub(r"\{\{\s*" + re.escape(k) + r"\s*\}\}", "" if v is None else str(v), new_html)
-
     return new_html
+
+def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
+    rows = []
+    for i, l in enumerate(spb.get("lines", [])):
+        it = items_by_id.get(l["item_id"], {})
+        rows.append({
+            "no": i + 1,
+            "kode": it.get("kode", ""),
+            "nama": it.get("nama", l["item_id"]),
+            "satuan": it.get("satuan", ""),
+            "jumlah": l["jumlah"],
+            "permintaan": l["jumlah"],
+            "disetujui": l["jumlah"],
+            "keperluan": l.get("keperluan", "") or spb.get("keperluan", ""),
+            "keterangan": "",
+            "harga": it.get("harga", 0),
+        })
+    today = now_utc()
+    place_date = f"Jember, {today.day} {NAMA_BULAN_ID[today.month-1]} {today.year}"
+    nomor_current = (spb.get("sbbk_nomor") if type_ == "sbbk" else spb.get("nomor")) or ""
+    ctx = {
+        "nomor": nomor_current,
+        "no_surat": nomor_current,
+        "nomor_spb": spb.get("nomor", ""),
+        "nomor_sbbk": spb.get("sbbk_nomor", ""),
+        "unit_kerja": spb.get("unit_kerja", ""),
+        "nama_peminta": spb.get("nama_peminta", ""),
+        "nama_penerima": spb.get("nama_peminta", ""),
+        "tanggal_permintaan": _fmt_tanggal(spb.get("created_at", "")),
+        "tanggal": _fmt_tanggal(spb.get("created_at", "")),
+        "tanggal_spb": _fmt_tanggal(spb.get("created_at", "")),
+        "tanggal_keluar": _fmt_tanggal(spb.get("approved_at", "")) or place_date.split(", ", 1)[1],
+        "place_date": place_date,
+        "tempat_tanggal": place_date,
+        "keperluan": spb.get("keperluan", ""),
+        "status": spb.get("status", ""),
+        "approver_name": spb.get("approver_name", ""),
+        "nama_pejabat": spb.get("approver_name", ""),
+        "approver_paraf": spb.get("approver_paraf", ""),
+        "nama_pengelola": "",
+        "nip_pengelola": "",
+        "nip_peminta": "",
+        "nip_pejabat": "",
+        "nip_penerima": "",
+    }
+    return ctx, rows
 
 @api.get("/surat/render/{type}/{spb_id}")
 async def render_surat(type: str, spb_id: str, user=Depends(get_current_user)):
@@ -810,37 +848,23 @@ async def render_surat(type: str, spb_id: str, user=Depends(get_current_user)):
     doc_id = settings.get(f"{type}_template_doc_id", "")
     if not doc_id:
         raise HTTPException(400, f"Template Google Doc untuk {type.upper()} belum diatur. Buka menu Pengaturan.")
-    items = {x["id"]: x for x in await db.items.find({}, {"_id": 0}).to_list(5000)}
-    rows = []
-    for i, l in enumerate(spb["lines"]):
-        it = items.get(l["item_id"], {})
-        rows.append({
-            "no": i + 1,
-            "nama": it.get("nama", l["item_id"]),
-            "satuan": it.get("satuan", ""),
-            "jumlah": l["jumlah"],
-            "permintaan": l["jumlah"],
-            "disetujui": l["jumlah"],
-            "keperluan": l.get("keperluan", "") or spb.get("keperluan", ""),
-            "keterangan": "",
-        })
-    today = now_utc()
-    place_date = f"Jember, {today.day} {NAMA_BULAN_ID[today.month-1]} {today.year}"
-    ctx = {
-        "nomor": (spb.get("sbbk_nomor") if type == "sbbk" else spb.get("nomor")) or "",
-        "unit_kerja": spb.get("unit_kerja", ""),
-        "nama_peminta": spb.get("nama_peminta", ""),
-        "tanggal_permintaan": _fmt_tanggal(spb.get("created_at", "")),
-        "tanggal": _fmt_tanggal(spb.get("created_at", "")),
-        "tanggal_spb": _fmt_tanggal(spb.get("created_at", "")),
-        "place_date": place_date,
-        "keperluan": spb.get("keperluan", ""),
-        "approver_name": spb.get("approver_name", ""),
-        "approver_paraf": spb.get("approver_paraf", ""),
-    }
+    items_by_id = {x["id"]: x for x in await db.items.find({}, {"_id": 0}).to_list(5000)}
+    ctx, rows = _build_ctx_rows(spb, items_by_id, type)
     html_text = _fetch_gdoc_html(doc_id)
     rendered = _render_template(html_text, ctx, rows)
     return Response(content=rendered, media_type="text/html; charset=utf-8")
+
+@api.get("/surat/data/{type}/{spb_id}")
+async def render_surat_data(type: str, spb_id: str, user=Depends(get_current_user)):
+    """Returns the variables that would be substituted for this transaction (for debugging template)."""
+    if type not in ("spb", "sbbk"):
+        raise HTTPException(400, "Type harus 'spb' atau 'sbbk'")
+    spb = await db.spb.find_one({"id": spb_id}, {"_id": 0})
+    if not spb:
+        raise HTTPException(404, "SPB tidak ditemukan")
+    items_by_id = {x["id"]: x for x in await db.items.find({}, {"_id": 0}).to_list(5000)}
+    ctx, rows = _build_ctx_rows(spb, items_by_id, type)
+    return {"context": ctx, "rows": rows}
 
 # -------------------- Reports --------------------
 async def report_asset_condition(user=Depends(get_current_user)):

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { api, BACKEND_URL } from "../lib/api";
+import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
-import { Printer, ArrowLeft, Settings as SettingsIcon, RefreshCw } from "lucide-react";
+import { Printer, ArrowLeft, Settings as SettingsIcon, RefreshCw, Bug, Copy } from "lucide-react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -11,12 +11,17 @@ export default function SuratPreview() {
   const [status, setStatus] = useState("loading"); // loading | ready | no-template | error
   const [errorMsg, setErrorMsg] = useState("");
   const [html, setHtml] = useState("");
+  const [vars, setVars] = useState(null);
+  const [showVars, setShowVars] = useState(false);
   const iframeRef = useRef(null);
 
   const load = async () => {
     setStatus("loading");
     try {
-      // Use the rendering endpoint - returns full HTML from Google Doc with placeholders replaced
+      // Always load the variable data for this transaction
+      const dataResp = await api.get(`/surat/data/${type}/${id}`);
+      setVars(dataResp.data);
+      // Load rendered HTML from Google Doc
       const resp = await api.get(`/surat/render/${type}/${id}`, { responseType: "text" });
       setHtml(resp.data);
       setStatus("ready");
@@ -29,21 +34,16 @@ export default function SuratPreview() {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [type, id]);
 
-  // Inject HTML into iframe whenever it changes
   useEffect(() => {
     if (status !== "ready") return;
     const iframe = iframeRef.current;
     if (!iframe) return;
-    const ensureWritable = () => {
+    setTimeout(() => {
       try {
         const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(html);
-        doc.close();
-      } catch (e) { /* ignore */ }
-    };
-    // Some browsers need the iframe to be fully attached
-    setTimeout(ensureWritable, 30);
+        doc.open(); doc.write(html); doc.close();
+      } catch {}
+    }, 30);
   }, [html, status]);
 
   const printIframe = () => {
@@ -52,7 +52,7 @@ export default function SuratPreview() {
     try {
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
-    } catch (e) { toast.error("Gagal cetak"); }
+    } catch { toast.error("Gagal cetak"); }
   };
 
   return (
@@ -66,31 +66,54 @@ export default function SuratPreview() {
             <Link to="/settings" className="text-sm text-[#1E3A8A] flex items-center gap-1 hover:underline">
               <SettingsIcon className="w-4 h-4" /> Atur Template
             </Link>
+            <Button variant="outline" size="sm" onClick={() => setShowVars(v => !v)}><Bug className="w-4 h-4 mr-1" />{showVars ? "Sembunyikan" : "Lihat"} Variabel</Button>
             <Button variant="outline" onClick={load}><RefreshCw className="w-4 h-4 mr-1" />Muat Ulang</Button>
-            <Button
-              data-testid="surat-print"
-              onClick={printIframe}
-              disabled={status !== "ready"}
-              className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"
-            >
+            <Button data-testid="surat-print" onClick={printIframe} disabled={status !== "ready"} className="bg-[#1E3A8A] hover:bg-[#1E2A6B]">
               <Printer className="w-4 h-4 mr-1" />Cetak PDF
             </Button>
           </div>
         </div>
 
-        {status === "loading" && (
-          <div className="bg-white border border-slate-200 rounded-lg p-12 text-center text-slate-500">
-            Memuat template dari Google Docs...
+        {showVars && vars && (
+          <div className="bg-white border border-slate-200 rounded-lg p-5 mb-4">
+            <div className="text-xs uppercase tracking-wider text-slate-500 mb-3">Variabel aktif untuk transaksi ini</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+              {Object.entries(vars.context).map(([k, v]) => (
+                <div key={k} className="flex items-center gap-2">
+                  <button onClick={() => { navigator.clipboard.writeText(`{{${k}}}`); toast.success("Disalin"); }} className="font-mono-data text-xs bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded inline-flex items-center gap-1">
+                    {`{{${k}}}`} <Copy className="w-3 h-3" />
+                  </button>
+                  <span className="text-slate-700 truncate">= {v?.toString?.() || <em className="text-slate-400">(kosong)</em>}</span>
+                </div>
+              ))}
+            </div>
+            <div className="text-xs uppercase tracking-wider text-slate-500 mt-5 mb-2">Baris Tabel (akan disisipkan untuk tiap item)</div>
+            <div className="overflow-x-auto">
+              <table className="text-xs">
+                <thead className="text-left text-slate-500">
+                  <tr>{Object.keys(vars.rows[0] || {}).map(k => <th key={k} className="pr-3 pb-1 font-mono-data">row.{k}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {vars.rows.map((r, i) => (
+                    <tr key={i} className="border-t border-slate-100">
+                      {Object.values(r).map((v, j) => <td key={j} className="pr-3 py-1">{String(v)}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+        )}
+
+        {status === "loading" && (
+          <div className="bg-white border border-slate-200 rounded-lg p-12 text-center text-slate-500">Memuat template dari Google Docs...</div>
         )}
 
         {status === "no-template" && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-8">
             <h3 className="font-display text-xl text-amber-900">Template Google Docs belum diatur</h3>
             <p className="text-amber-900/80 mt-2 text-sm">{errorMsg}</p>
-            <Link to="/settings" className="inline-block mt-4">
-              <Button className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"><SettingsIcon className="w-4 h-4 mr-1" />Buka Pengaturan Template</Button>
-            </Link>
+            <Link to="/settings"><Button className="mt-4 bg-[#1E3A8A]"><SettingsIcon className="w-4 h-4 mr-1" />Buka Pengaturan Template</Button></Link>
           </div>
         )}
 
@@ -98,19 +121,13 @@ export default function SuratPreview() {
           <div className="bg-red-50 border border-red-200 rounded-lg p-8">
             <h3 className="font-display text-xl text-red-900">Gagal memuat surat</h3>
             <p className="text-red-900/80 mt-2 text-sm">{errorMsg}</p>
-            <p className="text-xs text-red-900/70 mt-3">
-              Pastikan Google Doc sudah di-share publik ("Anyone with the link can view") dan placeholder ditulis dengan benar.
-            </p>
+            <p className="text-xs text-red-900/70 mt-3">Pastikan Google Doc sudah di-share "Anyone with the link".</p>
           </div>
         )}
 
         {status === "ready" && (
           <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-            <iframe
-              ref={iframeRef}
-              title="Surat Preview"
-              style={{ width: "100%", height: "1200px", border: 0, background: "white" }}
-            />
+            <iframe ref={iframeRef} title="Surat Preview" style={{ width: "100%", height: "1200px", border: 0, background: "white" }} />
           </div>
         )}
       </div>
