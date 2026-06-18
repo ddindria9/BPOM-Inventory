@@ -50,9 +50,9 @@ export default function SPBPublic() {
     <div className="min-h-screen bg-slate-50 py-10 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded bg-[#1E3A8A] text-white grid place-items-center font-bold">BP</div>
+          <img src="/logo-bpom.png" alt="BPOM" className="w-10 h-10 object-contain" />
           <div>
-            <div className="font-display font-bold text-slate-900">BADAN POM JEMBER</div>
+            <div className="font-display font-bold text-slate-900">BALAI POM DI JEMBER</div>
             <div className="text-xs text-slate-500 uppercase tracking-wider">Formulir Permintaan Barang (SPB)</div>
           </div>
         </div>

@@ -16,8 +16,8 @@ export default function Login() {
         <div className="absolute inset-0 opacity-20" style={{ backgroundImage: "url(https://images.unsplash.com/photo-1672552226380-486fe900b322?crop=entropy&cs=srgb&fm=jpg&q=80)", backgroundSize: "cover", backgroundPosition: "center" }} />
         <div className="relative z-10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded bg-white text-[#1E3A8A] grid place-items-center font-bold">BP</div>
-            <div className="font-display font-bold tracking-wide">BADAN POM JEMBER</div>
+            <img src="/logo-bpom.png" alt="BPOM" className="w-10 h-10 object-contain bg-white rounded p-1" />
+            <div className="font-display font-bold tracking-wide">BALAI POM DI JEMBER</div>
           </div>
           <div className="mt-12">
             <div className="text-xs uppercase tracking-[0.25em] text-blue-200">Sistem Internal</div>

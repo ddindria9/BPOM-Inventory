@@ -58,6 +58,16 @@ h1, h2, h3, h4, .font-display {
   body { @apply bg-background text-foreground; }
 }
 
+/* Hide Emergent platform watermarks */
+#emergent-badge,
+[data-emergent-badge],
+[class*="emergent-badge" i],
+[class*="madeWithEmergent" i],
+a[href*="emergent.sh"],
+a[href*="emergent.com"] {
+  display: none !important;
+}
+
 /* Print styling for surat (SPB / SBBK) */
 @media print {
   @page { size: A4; margin: 18mm 15mm; }
@@ -65,6 +75,9 @@ h1, h2, h3, h4, .font-display {
   .print-area, .print-area * { visibility: visible; }
   .print-area { position: absolute; inset: 0; width: 100%; }
   .no-print { display: none !important; }
+  /* Strip dashed borders from editable inputs on print */
+  .print-area input { border: 0 !important; background: transparent !important; outline: none !important; padding: 0 !important; }
+  .print-area input::placeholder { color: transparent !important; }
 }
 
 .print-area {

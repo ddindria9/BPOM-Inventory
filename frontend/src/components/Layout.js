@@ -28,9 +28,9 @@ export default function Layout({ children }) {
       {/* Sidebar */}
       <aside className={`fixed lg:static z-40 inset-y-0 left-0 w-64 bg-[#1E3A8A] text-white flex flex-col transform ${open ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0 transition-transform`}>
         <div className="px-5 py-5 flex items-center gap-3 border-b border-white/10">
-          <div className="w-9 h-9 rounded bg-white text-[#1E3A8A] grid place-items-center font-bold">BP</div>
+          <img src="/logo-bpom.png" alt="BPOM" className="w-9 h-9 object-contain bg-white rounded p-0.5" />
           <div>
-            <div className="font-display font-bold leading-none">BPOM Jember</div>
+            <div className="font-display font-bold leading-none">Balai POM Jember</div>
             <div className="text-[10px] uppercase tracking-[0.25em] text-blue-200 mt-1">Inventory</div>
           </div>
           <button className="ml-auto lg:hidden p-1" onClick={() => setOpen(false)}><X className="w-5 h-5" /></button>

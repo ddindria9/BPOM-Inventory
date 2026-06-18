@@ -1,4 +1,5 @@
 import "@/App.css";
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { Toaster } from "sonner";
@@ -55,6 +56,23 @@ function AppRouter() {
 }
 
 export default function App() {
+  useEffect(() => {
+    // Hide Emergent platform watermark/badge on every render
+    const stripBadge = () => {
+      const candidates = document.querySelectorAll('a, button, div');
+      candidates.forEach((el) => {
+        const t = (el.textContent || '').trim();
+        if (t === 'Made with Emergent' || /Made with Emergent/i.test(t) && el.offsetParent && el.children.length < 6) {
+          el.style.setProperty('display', 'none', 'important');
+        }
+      });
+    };
+    stripBadge();
+    const obs = new MutationObserver(stripBadge);
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
+
   return (
     <div className="App">
       <BrowserRouter>

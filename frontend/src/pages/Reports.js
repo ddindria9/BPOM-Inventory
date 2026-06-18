@@ -32,11 +32,12 @@ export default function Reports() {
 
       <div className="print-area bg-white border border-slate-200 rounded-lg p-8">
         <div className="kop-surat flex items-center gap-5 pb-3">
-          <div className="w-16 h-16 rounded-full bg-[#1E3A8A] text-white grid place-items-center text-xl font-bold">BP</div>
+          <img src="/logo-bpom.png" alt="BPOM" className="w-20 h-20 object-contain" />
           <div className="flex-1 text-center">
-            <div className="text-xs uppercase tracking-widest">Kementerian Kesehatan RI</div>
-            <div className="lembaga text-lg">BADAN PENGAWAS OBAT DAN MAKANAN</div>
-            <div className="lembaga font-bold">LOKA POM JEMBER</div>
+            <div className="text-sm font-semibold">BADAN PENGAWAS OBAT DAN MAKANAN</div>
+            <div className="text-base font-bold">BALAI POM DI JEMBER</div>
+            <div className="text-[11px] mt-1">Jl. Letjend Sutoyo No. 50 Jember Telp. (0331) 422988</div>
+            <div className="text-[11px]">e-mail: balaipom_jember@pom.go.id, Website: www.pom.go.id</div>
           </div>
         </div>
 
