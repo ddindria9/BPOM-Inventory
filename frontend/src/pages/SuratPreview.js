@@ -45,12 +45,16 @@ export default function SuratPreview() {
         // Inject CSS to make all blocks visually editable + cleaner table borders
         const editableCSS = `
           <style>
-            body { padding: 24px; font-family: 'Times New Roman', serif; cursor: text; }
+            @page { size: A4 portrait !important; margin: 15mm 12mm !important; }
+            html, body { background: white !important; }
+            body { padding: 24px !important; font-family: 'Times New Roman', serif !important; cursor: text;
+                   width: 210mm !important; max-width: 210mm !important; min-height: 297mm !important;
+                   margin: 0 auto !important; box-sizing: border-box !important; }
             [contenteditable="true"]:focus, [contenteditable="true"]:hover { background: #FEF3C7; outline: 1px dashed #1E3A8A; }
             table { border-collapse: collapse; }
             td, th { border: 1px solid #000; }
             @media print {
-              body { padding: 0; }
+              body { padding: 0 !important; width: 186mm !important; max-width: 186mm !important; }
               [contenteditable="true"]:focus, [contenteditable="true"]:hover { background: transparent; outline: none; }
             }
           </style>
