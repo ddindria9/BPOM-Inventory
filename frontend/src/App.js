@@ -18,6 +18,7 @@ import AssetInspect from "./pages/AssetInspect";
 import Reports from "./pages/Reports";
 import Users from "./pages/Users";
 import SPBList from "./pages/SPBList";
+import Settings from "./pages/Settings";
 import Layout from "./components/Layout";
 
 function Protected({ children }) {
@@ -51,6 +52,7 @@ function AppRouter() {
       <Route path="/assets" element={<Protected><Assets /></Protected>} />
       <Route path="/reports" element={<Protected><Reports /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
+      <Route path="/settings" element={<Protected><Settings /></Protected>} />
     </Routes>
   );
 }

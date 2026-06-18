@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, io, uuid, logging, requests
+import os, io, uuid, logging, requests, re
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
@@ -706,8 +706,143 @@ async def dashboard_stats(user=Depends(get_current_user)):
         "pending_spb": pending_spb,
     }
 
+# -------------------- Settings (Surat Template URLs) --------------------
+SETTINGS_KEY = "app_settings"
+
+@api.get("/settings")
+async def get_settings(user=Depends(get_current_user)):
+    s = await db.settings.find_one({"key": SETTINGS_KEY}, {"_id": 0}) or {}
+    return {
+        "spb_template_doc_id": s.get("spb_template_doc_id", ""),
+        "sbbk_template_doc_id": s.get("sbbk_template_doc_id", ""),
+    }
+
+class SettingsIn(BaseModel):
+    spb_template_doc_id: Optional[str] = None
+    sbbk_template_doc_id: Optional[str] = None
+
+def _extract_doc_id(s: str) -> str:
+    """Accept either raw doc_id or full URL and return doc_id."""
+    if not s:
+        return ""
+    s = s.strip()
+    m = re.search(r"/document/d/([a-zA-Z0-9_\-]+)", s)
+    if m:
+        return m.group(1)
+    return s
+
+@api.put("/settings")
+async def update_settings(body: SettingsIn, user=Depends(require_role("admin", "admin_gudang"))):
+    upd = {}
+    if body.spb_template_doc_id is not None:
+        upd["spb_template_doc_id"] = _extract_doc_id(body.spb_template_doc_id)
+    if body.sbbk_template_doc_id is not None:
+        upd["sbbk_template_doc_id"] = _extract_doc_id(body.sbbk_template_doc_id)
+    await db.settings.update_one({"key": SETTINGS_KEY}, {"$set": {"key": SETTINGS_KEY, **upd}}, upsert=True)
+    return await get_settings(user)
+
+# -------------------- Surat (Google Docs template render) --------------------
+def _fetch_gdoc_html(doc_id: str) -> str:
+    """Fetch publicly-shared Google Doc as HTML."""
+    url = f"https://docs.google.com/document/d/{doc_id}/export?format=html"
+    r = requests.get(url, timeout=30, allow_redirects=True)
+    if r.status_code != 200 or "<body" not in r.text:
+        raise HTTPException(400, "Gagal memuat Google Doc. Pastikan dibagikan 'Anyone with the link can view'.")
+    return r.text
+
+NAMA_BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
+
+def _fmt_tanggal(dt_str: str) -> str:
+    if not dt_str:
+        return ""
+    try:
+        d = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        return f"{d.day} {NAMA_BULAN_ID[d.month-1]} {d.year}"
+    except Exception:
+        return dt_str
+
+def _render_template(html_text: str, ctx: dict, rows: list) -> str:
+    """Replace {{key}} placeholders + expand row template.
+    Row mechanism: if any {{row.*}} placeholder exists inside a <tr>, that <tr> is duplicated per row.
+    """
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html_text, "lxml")
+
+    # 1) Expand row template inside <tr> that contains any {{row.xxx}}
+    row_tr_keys = set(re.findall(r"\{\{\s*row\.([a-zA-Z0-9_]+)\s*\}\}", str(soup)))
+    if row_tr_keys:
+        for tr in list(soup.find_all("tr")):
+            tr_str = str(tr)
+            if "{{row." not in tr_str and "{{ row." not in tr_str:
+                continue
+            new_html_parts = []
+            for r in rows:
+                row_html = tr_str
+                for k in row_tr_keys:
+                    val = "" if r.get(k) is None else str(r.get(k))
+                    row_html = re.sub(r"\{\{\s*row\." + re.escape(k) + r"\s*\}\}", val, row_html)
+                new_html_parts.append(row_html)
+            replacement = BeautifulSoup("".join(new_html_parts), "lxml")
+            # Replace tr with new fragments (which contain <tr>s) - extract tr children
+            new_trs = replacement.find_all("tr")
+            if new_trs:
+                parent = tr.parent
+                idx = list(parent.children).index(tr) if tr in parent.children else None
+                tr.extract()
+                for nt in new_trs:
+                    parent.append(nt)
+
+    # 2) Replace simple {{key}} placeholders in remaining content
+    new_html = str(soup)
+    for k, v in ctx.items():
+        new_html = re.sub(r"\{\{\s*" + re.escape(k) + r"\s*\}\}", "" if v is None else str(v), new_html)
+
+    return new_html
+
+@api.get("/surat/render/{type}/{spb_id}")
+async def render_surat(type: str, spb_id: str, user=Depends(get_current_user)):
+    if type not in ("spb", "sbbk"):
+        raise HTTPException(400, "Type harus 'spb' atau 'sbbk'")
+    spb = await db.spb.find_one({"id": spb_id}, {"_id": 0})
+    if not spb:
+        raise HTTPException(404, "SPB tidak ditemukan")
+    settings = await db.settings.find_one({"key": SETTINGS_KEY}, {"_id": 0}) or {}
+    doc_id = settings.get(f"{type}_template_doc_id", "")
+    if not doc_id:
+        raise HTTPException(400, f"Template Google Doc untuk {type.upper()} belum diatur. Buka menu Pengaturan.")
+    items = {x["id"]: x for x in await db.items.find({}, {"_id": 0}).to_list(5000)}
+    rows = []
+    for i, l in enumerate(spb["lines"]):
+        it = items.get(l["item_id"], {})
+        rows.append({
+            "no": i + 1,
+            "nama": it.get("nama", l["item_id"]),
+            "satuan": it.get("satuan", ""),
+            "jumlah": l["jumlah"],
+            "permintaan": l["jumlah"],
+            "disetujui": l["jumlah"],
+            "keperluan": l.get("keperluan", "") or spb.get("keperluan", ""),
+            "keterangan": "",
+        })
+    today = now_utc()
+    place_date = f"Jember, {today.day} {NAMA_BULAN_ID[today.month-1]} {today.year}"
+    ctx = {
+        "nomor": (spb.get("sbbk_nomor") if type == "sbbk" else spb.get("nomor")) or "",
+        "unit_kerja": spb.get("unit_kerja", ""),
+        "nama_peminta": spb.get("nama_peminta", ""),
+        "tanggal_permintaan": _fmt_tanggal(spb.get("created_at", "")),
+        "tanggal": _fmt_tanggal(spb.get("created_at", "")),
+        "tanggal_spb": _fmt_tanggal(spb.get("created_at", "")),
+        "place_date": place_date,
+        "keperluan": spb.get("keperluan", ""),
+        "approver_name": spb.get("approver_name", ""),
+        "approver_paraf": spb.get("approver_paraf", ""),
+    }
+    html_text = _fetch_gdoc_html(doc_id)
+    rendered = _render_template(html_text, ctx, rows)
+    return Response(content=rendered, media_type="text/html; charset=utf-8")
+
 # -------------------- Reports --------------------
-@api.get("/reports/asset-condition")
 async def report_asset_condition(user=Depends(get_current_user)):
     assets = await db.assets.find({}, {"_id": 0}).sort("nup", 1).to_list(5000)
     return assets
