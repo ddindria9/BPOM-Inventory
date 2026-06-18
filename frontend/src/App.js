@@ -1,56 +1,68 @@
-import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { Toaster } from "sonner";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import Login from "./pages/Login";
+import AuthCallback from "./pages/AuthCallback";
+import Dashboard from "./pages/Dashboard";
+import MasterData from "./pages/MasterData";
+import IncomingGoods from "./pages/IncomingGoods";
+import SPBPublic from "./pages/SPBPublic";
+import Approval from "./pages/Approval";
+import SuratPreview from "./pages/SuratPreview";
+import StockCard from "./pages/StockCard";
+import Assets from "./pages/Assets";
+import AssetInspect from "./pages/AssetInspect";
+import Reports from "./pages/Reports";
+import Users from "./pages/Users";
+import SPBList from "./pages/SPBList";
+import Layout from "./components/Layout";
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+function Protected({ children }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Memuat...</div>;
+  if (!user) return <Navigate to="/login" replace />;
+  return <Layout>{children}</Layout>;
+}
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
+function AppRouter() {
+  const location = useLocation();
+  // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+  if (location.hash?.includes("session_id=")) {
+    return <AuthCallback />;
+  }
   return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      {/* Public routes */}
+      <Route path="/spb-public" element={<SPBPublic />} />
+      <Route path="/asset-inspect/:id" element={<AssetInspect />} />
+      <Route path="/surat/:type/:id" element={<SuratPreview />} />
+      {/* Protected app */}
+      <Route path="/" element={<Protected><Dashboard /></Protected>} />
+      <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
+      <Route path="/master" element={<Protected><MasterData /></Protected>} />
+      <Route path="/incoming" element={<Protected><IncomingGoods /></Protected>} />
+      <Route path="/spb" element={<Protected><SPBList /></Protected>} />
+      <Route path="/approval" element={<Protected><Approval /></Protected>} />
+      <Route path="/stock-card" element={<Protected><StockCard /></Protected>} />
+      <Route path="/assets" element={<Protected><Assets /></Protected>} />
+      <Route path="/reports" element={<Protected><Reports /></Protected>} />
+      <Route path="/users" element={<Protected><Users /></Protected>} />
+    </Routes>
   );
-};
+}
 
-function App() {
+export default function App() {
   return (
     <div className="App">
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
+        <AuthProvider>
+          <AppRouter />
+          <Toaster position="top-right" richColors />
+        </AuthProvider>
       </BrowserRouter>
     </div>
   );
 }
-
-export default App;
