@@ -1,37 +1,35 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, fmtDate, NAMA_BULAN_ID, BULAN_ROMAWI } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Printer, ArrowLeft, RotateCcw } from "lucide-react";
 
-// Simple inline editable text — looks like plain text, becomes a transparent input on focus
-function Editable({ value, onChange, className = "", placeholder = "", testid }) {
+// Editable text input that visually appears as plain text. Becomes highlighted on focus.
+function Editable({ value, onChange, className = "", placeholder = "", align = "left", testid }) {
   return (
     <input
       data-testid={testid}
       value={value || ""}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className={`bg-transparent outline-none border-b border-dashed border-transparent hover:border-slate-300 focus:border-[#1E3A8A] focus:bg-amber-50 px-0.5 py-0 print:border-0 print:bg-transparent ${className}`}
+      className={`bg-transparent outline-none border-b border-dashed border-transparent hover:border-slate-300 focus:border-[#1E3A8A] focus:bg-amber-50 px-0.5 py-0 print:border-0 print:bg-transparent text-${align} ${className}`}
       style={{ minWidth: "1ch" }}
     />
   );
 }
 
-// Editable contained inside a table cell
-function EditableCell({ value, onChange, className = "", align = "left", testid }) {
+function CellEdit({ value, onChange, align = "left", testid }) {
   return (
     <input
       data-testid={testid}
       value={value || ""}
       onChange={(e) => onChange(e.target.value)}
-      className={`w-full bg-transparent outline-none border-0 px-1 py-1 focus:bg-amber-50 print:bg-transparent text-${align} ${className}`}
+      className={`w-full bg-transparent outline-none border-0 px-1 py-0.5 focus:bg-amber-50 print:bg-transparent text-${align}`}
     />
   );
 }
 
-const today = new Date();
-const tglIndoFull = (d = today) => `${d.getDate()} ${NAMA_BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
+const tglIndoFull = (d = new Date()) => `${d.getDate()} ${NAMA_BULAN_ID[d.getMonth()]} ${d.getFullYear()}`;
 
 export default function SuratPreview() {
   const { type, id } = useParams();
@@ -40,8 +38,6 @@ export default function SuratPreview() {
   const [templateUrl, setTemplateUrl] = useState(localStorage.getItem("surat_template_url") || "");
   const isSBBK = type === "sbbk";
   const storageKey = `surat_edit_${type}_${id}`;
-
-  // Editable doc model (persisted to localStorage)
   const [doc, setDoc] = useState(null);
 
   useEffect(() => {
@@ -50,37 +46,33 @@ export default function SuratPreview() {
       setSpb(data);
       const it = await api.get("/items").catch(() => ({ data: [] }));
       setItems(it.data);
-      // Initialize editable model
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         try { setDoc(JSON.parse(saved)); return; } catch {}
       }
-      const monthRoman = BULAN_ROMAWI[today.getMonth() + 1];
+      const monthRoman = BULAN_ROMAWI[new Date().getMonth() + 1];
       const nomor = isSBBK
-        ? (data.sbbk_nomor || `0001/SBBK/${monthRoman}/${today.getFullYear()}`)
+        ? (data.sbbk_nomor || `0001/PSD/${monthRoman}/${new Date().getFullYear()}`)
         : data.nomor;
       setDoc({
         nomor,
         unit_kerja: data.unit_kerja || "Balai POM di Jember",
         tanggal_spb: fmtDate(data.created_at),
         tanggal_keluar: tglIndoFull(),
-        nama_peminta: data.nama_peminta || "",
-        nip_peminta: "",
         nama_pengelola: "",
         nip_pengelola: "",
         nama_pejabat: data.approver_name || "",
         nip_pejabat: "",
         nama_penerima: data.nama_peminta || "",
         nip_penerima: "",
-        keperluan_default: data.keperluan || "",
         rows: data.lines.map((l) => ({
           item_id: l.item_id,
-          jumlah: l.jumlah,
-          satuan: it.data.find((x) => x.id === l.item_id)?.satuan || "",
           nama: it.data.find((x) => x.id === l.item_id)?.nama || l.item_id,
+          satuan: it.data.find((x) => x.id === l.item_id)?.satuan || "",
+          jumlah: String(l.jumlah),
+          permintaan: String(l.jumlah),
+          disetujui: String(l.jumlah),
           keperluan: l.keperluan || "",
-          permintaan: l.jumlah,
-          disetujui: l.jumlah,
           keterangan: "",
         })),
       });
@@ -93,7 +85,7 @@ export default function SuratPreview() {
   }, [doc, storageKey]);
 
   const update = (patch) => setDoc((d) => ({ ...d, ...patch }));
-  const updateRow = (idx, patch) => setDoc((d) => ({ ...d, rows: d.rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)) }));
+  const updateRow = (i, patch) => setDoc((d) => ({ ...d, rows: d.rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) }));
   const reset = () => { localStorage.removeItem(storageKey); window.location.reload(); };
 
   if (!doc || !spb) return <div className="min-h-screen grid place-items-center text-slate-500">Memuat...</div>;
@@ -101,7 +93,6 @@ export default function SuratPreview() {
   return (
     <div className="min-h-screen bg-slate-100 py-6">
       <div className="max-w-4xl mx-auto px-4">
-        {/* Toolbar */}
         <div className="no-print flex items-center justify-between mb-4 gap-3 flex-wrap">
           <button onClick={() => window.history.back()} className="flex items-center gap-1 text-slate-600 hover:text-slate-900">
             <ArrowLeft className="w-4 h-4" /> Kembali
@@ -115,163 +106,204 @@ export default function SuratPreview() {
               className="h-9 px-3 border border-slate-200 rounded text-sm w-64"
             />
             {templateUrl && <a href={templateUrl} target="_blank" rel="noreferrer" className="text-sm text-[#1E3A8A] underline">Buka Template</a>}
-            <Button data-testid="surat-reset" variant="outline" onClick={reset} title="Reset suntingan"><RotateCcw className="w-4 h-4 mr-1" />Reset</Button>
+            <Button data-testid="surat-reset" variant="outline" onClick={reset}><RotateCcw className="w-4 h-4 mr-1" />Reset</Button>
             <Button data-testid="surat-print" onClick={() => window.print()} className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"><Printer className="w-4 h-4 mr-1" />Cetak PDF</Button>
           </div>
         </div>
-
         <div className="no-print text-xs text-slate-500 mb-2">
-          ✏️ Klik teks di bawah untuk mengedit (nomor, unit, tanggal, nama, NIP, baris tabel). Perubahan tersimpan otomatis di browser.
+          ✏️ Klik field manapun untuk mengedit. Perubahan tersimpan otomatis di browser.
         </div>
 
-        {/* === LETTER === */}
-        <div className="print-area bg-white shadow-sm border border-slate-200 p-10 sm:p-14 text-black">
-          {/* Kop Surat with logo */}
-          <div className="kop-surat flex items-center gap-5">
-            <img src="/logo-bpom.png" alt="Logo BPOM" className="w-24 h-24 object-contain" />
-            <div className="flex-1 text-center">
-              <div className="text-sm font-semibold">BADAN PENGAWAS OBAT DAN MAKANAN</div>
-              <div className="text-base font-bold">BALAI POM DI JEMBER</div>
-              <div className="text-[11px] mt-1">Jl. Letjend Sutoyo No. 50 Jember Telp. (0331) 422988</div>
-              <div className="text-[11px]">e-mail: balaipom_jember@pom.go.id, Website: www.pom.go.id</div>
+        {/* === LETTER (A4 Letter actually - matches docx pgSz 12240x15840 = 8.5"x11") === */}
+        <div className="print-area mx-auto bg-white shadow-sm border border-slate-200 text-black" style={{ width: "8.5in", minHeight: "11in", padding: "1in", fontFamily: "'Times New Roman', Times, serif", fontSize: "12pt", lineHeight: 1.3 }}>
+
+          {/* Kop Surat */}
+          <div className="flex items-center" style={{ borderBottom: "3px double black", paddingBottom: "6px" }}>
+            <img src="/logo-bpom.png" alt="BPOM" style={{ width: "85px", height: "85px", objectFit: "contain" }} />
+            <div className="flex-1 text-center" style={{ marginLeft: "8px" }}>
+              <div style={{ fontWeight: 700, fontSize: "13pt" }}>BADAN PENGAWAS OBAT DAN MAKANAN</div>
+              <div style={{ fontWeight: 700, fontSize: "16pt" }}>BALAI POM DI JEMBER</div>
+              <div style={{ fontSize: "10pt" }}>Jl. Letjend Sutoyo No. 50 Jember Telp. (0331) 422988</div>
+              <div style={{ fontSize: "10pt" }}>e-mail: balaipom_jember@pom.go.id, Website: www.pom.go.id</div>
             </div>
           </div>
 
-          {/* Title */}
-          <div className="text-center mt-6">
-            <div className="font-bold text-lg underline">
-              {isSBBK ? "Surat Bukti Barang Keluar (SBBK)" : "Surat Permintaan Barang (SPB)"}
-            </div>
+          {/* Title - centered */}
+          <div className="text-center" style={{ marginTop: "16pt", fontWeight: 700, fontSize: "12pt", textDecoration: "underline" }}>
+            {isSBBK ? "Surat Bukti Barang Keluar (SBBK)" : "Surat Permintaan Barang (SPB)"}
           </div>
 
-          {/* Header info */}
-          <div className="mt-5 text-sm">
-            <table>
-              <tbody>
-                <tr>
-                  <td className="pr-3 align-top w-40">Nomor</td>
-                  <td className="pr-2 align-top">:</td>
-                  <td><Editable testid="surat-nomor" value={doc.nomor} onChange={(v) => update({ nomor: v })} className="font-mono-data" /></td>
-                </tr>
-                <tr>
-                  <td className="pr-3 align-top">Unit Kerja</td>
-                  <td className="pr-2 align-top">:</td>
-                  <td><Editable testid="surat-unit" value={doc.unit_kerja} onChange={(v) => update({ unit_kerja: v })} /></td>
-                </tr>
-                {isSBBK ? (
-                  <tr>
-                    <td className="pr-3 align-top">No. dan Tgl. SPB</td>
-                    <td className="pr-2 align-top">:</td>
-                    <td><Editable testid="surat-tgl-spb" value={doc.tanggal_spb} onChange={(v) => update({ tanggal_spb: v })} /></td>
-                  </tr>
-                ) : (
-                  <tr>
-                    <td className="pr-3 align-top">Tanggal Permintaan</td>
-                    <td className="pr-2 align-top">:</td>
-                    <td><Editable value={doc.tanggal_spb} onChange={(v) => update({ tanggal_spb: v })} /></td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          {/* Nomor - centered */}
+          <div className="text-center" style={{ fontSize: "12pt", marginTop: "2pt" }}>
+            Nomor :&nbsp;<Editable testid="surat-nomor" value={doc.nomor} onChange={(v) => update({ nomor: v })} className="font-mono-data" />
           </div>
 
-          {/* Table */}
-          <table className="w-full mt-5 text-sm border-collapse border border-black">
-            <thead>
-              <tr>
-                <th className="border border-black px-2 py-1 w-10 text-center">No.</th>
-                <th className="border border-black px-2 py-1 text-left">Nama Barang</th>
-                <th className="border border-black px-2 py-1 w-20 text-center">Satuan</th>
-                <th className="border border-black px-2 py-1 w-20 text-center">{isSBBK ? "Jumlah" : "Jumlah"}</th>
-                {isSBBK ? (
-                  <th className="border border-black px-2 py-1 text-left">Keterangan</th>
-                ) : (
-                  <>
-                    <th className="border border-black px-2 py-1 text-left">Keperluan</th>
-                    <th className="border border-black px-2 py-1 w-20 text-center">Permintaan</th>
-                    <th className="border border-black px-2 py-1 w-20 text-center">Disetujui</th>
-                  </>
-                )}
-              </tr>
-            </thead>
+          {/* Info table */}
+          <table style={{ marginTop: "12pt", fontSize: "12pt", borderCollapse: "collapse" }}>
             <tbody>
-              {doc.rows.map((r, i) => (
-                <tr key={i}>
-                  <td className="border border-black text-center">{i + 1}</td>
-                  <td className="border border-black"><EditableCell value={r.nama} onChange={(v) => updateRow(i, { nama: v })} /></td>
-                  <td className="border border-black"><EditableCell value={r.satuan} onChange={(v) => updateRow(i, { satuan: v })} align="center" /></td>
-                  <td className="border border-black"><EditableCell value={r.jumlah} onChange={(v) => updateRow(i, { jumlah: v })} align="center" /></td>
-                  {isSBBK ? (
-                    <td className="border border-black"><EditableCell value={r.keterangan} onChange={(v) => updateRow(i, { keterangan: v })} /></td>
-                  ) : (
-                    <>
-                      <td className="border border-black"><EditableCell value={r.keperluan} onChange={(v) => updateRow(i, { keperluan: v })} /></td>
-                      <td className="border border-black"><EditableCell value={r.permintaan} onChange={(v) => updateRow(i, { permintaan: v })} align="center" /></td>
-                      <td className="border border-black"><EditableCell value={r.disetujui} onChange={(v) => updateRow(i, { disetujui: v })} align="center" /></td>
-                    </>
-                  )}
-                </tr>
-              ))}
+              <tr>
+                <td style={{ width: isSBBK ? "1.26in" : "1.45in", verticalAlign: "top" }}>Unit Kerja</td>
+                <td style={{ width: "0.2in", verticalAlign: "top" }}>:</td>
+                <td style={{ verticalAlign: "top" }}>
+                  <Editable testid="surat-unit" value={doc.unit_kerja} onChange={(v) => update({ unit_kerja: v })} />
+                </td>
+              </tr>
+              <tr>
+                <td style={{ verticalAlign: "top" }}>{isSBBK ? "No. dan Tgl. SPB" : "Tanggal Permintaan"}</td>
+                <td style={{ verticalAlign: "top" }}>:</td>
+                <td style={{ verticalAlign: "top" }}>
+                  <Editable testid="surat-tgl" value={doc.tanggal_spb} onChange={(v) => update({ tanggal_spb: v })} />
+                </td>
+              </tr>
             </tbody>
           </table>
 
-          {/* Date right */}
-          <div className="mt-6 text-sm text-right">
-            Jember, <Editable value={doc.tanggal_keluar} onChange={(v) => update({ tanggal_keluar: v })} />
-          </div>
-
-          {/* Signature blocks */}
+          {/* Data table */}
           {isSBBK ? (
-            <div className="grid grid-cols-2 gap-12 mt-2 text-sm">
-              <div>
-                <div>Pengelola Gudang</div>
-                <div className="h-20"></div>
-                <div className="border-t border-black pt-1">
-                  <Editable testid="surat-nama-pengelola" value={doc.nama_pengelola} onChange={(v) => update({ nama_pengelola: v })} placeholder="Nama Pengelola Gudang" className="font-semibold w-full" />
-                </div>
-                <div>NIP. <Editable value={doc.nip_pengelola} onChange={(v) => update({ nip_pengelola: v })} placeholder="________________" /></div>
-              </div>
-              <div className="text-right">
-                <div>Yang Menerima</div>
-                <div className="h-20"></div>
-                <div className="border-t border-black pt-1">
-                  <Editable testid="surat-nama-penerima" value={doc.nama_penerima} onChange={(v) => update({ nama_penerima: v })} placeholder="Nama Penerima" className="font-semibold w-full text-right" />
-                </div>
-                <div>NIP. <Editable value={doc.nip_penerima} onChange={(v) => update({ nip_penerima: v })} placeholder="________________" /></div>
-              </div>
-            </div>
+            <table style={{ width: "100%", marginTop: "10pt", borderCollapse: "collapse", fontSize: "11pt" }}>
+              <colgroup>
+                <col style={{ width: "5.6%" }} />
+                <col style={{ width: "48.7%" }} />
+                <col style={{ width: "10.4%" }} />
+                <col style={{ width: "10.3%" }} />
+                <col style={{ width: "25.0%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  {["No.", "Nama Barang", "Satuan", "Jumlah", "Keterangan"].map((h, i) => (
+                    <th key={i} style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {doc.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td style={{ border: "1px solid black", textAlign: "center" }}>{i + 1}</td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.nama} onChange={(v) => updateRow(i, { nama: v })} /></td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.satuan} onChange={(v) => updateRow(i, { satuan: v })} align="center" /></td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.jumlah} onChange={(v) => updateRow(i, { jumlah: v })} align="center" /></td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.keterangan} onChange={(v) => updateRow(i, { keterangan: v })} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : (
-            <div className="grid grid-cols-3 gap-6 mt-2 text-sm">
-              <div>
-                <div>Yang meminta</div>
-                <div className="h-20"></div>
-                <div className="border-t border-black pt-1">
-                  <Editable value={doc.nama_peminta} onChange={(v) => update({ nama_peminta: v })} className="font-semibold w-full" />
-                </div>
-                <div>NIP. <Editable value={doc.nip_peminta} onChange={(v) => update({ nip_peminta: v })} placeholder="____________" /></div>
-              </div>
-              <div className="text-center">
-                <div>Pengelola Gudang</div>
-                <div className="h-20"></div>
-                <div className="border-t border-black pt-1">
-                  <Editable value={doc.nama_pengelola} onChange={(v) => update({ nama_pengelola: v })} placeholder="Nama" className="font-semibold w-full text-center" />
-                </div>
-                <div>NIP. <Editable value={doc.nip_pengelola} onChange={(v) => update({ nip_pengelola: v })} placeholder="____________" /></div>
-              </div>
-              <div className="text-right">
-                <div>Pejabat Struktural</div>
-                <div className="h-20 flex items-end justify-end">
-                  {spb.approver_paraf && <div className="italic text-lg text-[#1E3A8A] mb-1">{spb.approver_paraf}</div>}
-                </div>
-                <div className="border-t border-black pt-1">
-                  <Editable value={doc.nama_pejabat} onChange={(v) => update({ nama_pejabat: v })} placeholder="Nama Pejabat" className="font-semibold w-full text-right" />
-                </div>
-                <div>NIP. <Editable value={doc.nip_pejabat} onChange={(v) => update({ nip_pejabat: v })} placeholder="____________" /></div>
-              </div>
+            <table style={{ width: "100%", marginTop: "10pt", borderCollapse: "collapse", fontSize: "11pt" }}>
+              <colgroup>
+                <col style={{ width: "5.6%" }} />
+                <col style={{ width: "33.9%" }} />
+                <col style={{ width: "9.2%" }} />
+                <col style={{ width: "13.6%" }} />
+                <col style={{ width: "11.1%" }} />
+                <col style={{ width: "26.6%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th rowSpan={2} style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>No.</th>
+                  <th rowSpan={2} style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>Nama Barang</th>
+                  <th rowSpan={2} style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>Satuan</th>
+                  <th colSpan={2} style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>Jumlah</th>
+                  <th rowSpan={2} style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>Keperluan</th>
+                </tr>
+                <tr>
+                  <th style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>Permintaan</th>
+                  <th style={{ border: "1px solid black", padding: "4px", textAlign: "center", fontWeight: 700 }}>Disetujui</th>
+                </tr>
+              </thead>
+              <tbody>
+                {doc.rows.map((r, i) => (
+                  <tr key={i}>
+                    <td style={{ border: "1px solid black", textAlign: "center" }}>{i + 1}</td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.nama} onChange={(v) => updateRow(i, { nama: v })} /></td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.satuan} onChange={(v) => updateRow(i, { satuan: v })} align="center" /></td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.permintaan} onChange={(v) => updateRow(i, { permintaan: v })} align="center" /></td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.disetujui} onChange={(v) => updateRow(i, { disetujui: v })} align="center" /></td>
+                    <td style={{ border: "1px solid black" }}><CellEdit value={r.keperluan} onChange={(v) => updateRow(i, { keperluan: v })} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Date - only on SBBK per docx, left aligned but appears just before signature block */}
+          {isSBBK && (
+            <div style={{ marginTop: "14pt", fontSize: "12pt" }}>
+              Jember, <Editable value={doc.tanggal_keluar} onChange={(v) => update({ tanggal_keluar: v })} />
             </div>
           )}
 
-          <div className="text-[10px] text-slate-500 mt-12 text-right print:text-black">POM-14.01/CFM.01/SOP.01/IK.143.01/F.01</div>
+          {/* Signature table - 3 equal columns; middle empty for spacing */}
+          <table style={{ width: "100%", marginTop: isSBBK ? "6pt" : "24pt", fontSize: "12pt", borderCollapse: "collapse" }}>
+            <colgroup>
+              <col style={{ width: "33.33%" }} />
+              <col style={{ width: "33.33%" }} />
+              <col style={{ width: "33.33%" }} />
+            </colgroup>
+            <tbody>
+              <tr>
+                <td style={{ verticalAlign: "top", textAlign: "center" }}>
+                  {isSBBK ? "Yang Menerima" : "Pengelola Gudang"}
+                </td>
+                <td></td>
+                <td style={{ verticalAlign: "top", textAlign: "center" }}>
+                  {isSBBK ? "Pengelola Gudang" : "Pejabat Struktural"}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ height: "80px", textAlign: "center", verticalAlign: "bottom" }}>
+                  {!isSBBK && spb.approver_paraf ? null : null}
+                </td>
+                <td></td>
+                <td style={{ height: "80px", textAlign: "center", verticalAlign: "bottom" }}>
+                  {!isSBBK && spb.approver_paraf && (
+                    <div style={{ fontStyle: "italic", color: "#1E3A8A", fontSize: "14pt" }}>{spb.approver_paraf}</div>
+                  )}
+                </td>
+              </tr>
+              <tr>
+                <td style={{ textAlign: "center" }}>
+                  <Editable
+                    value={isSBBK ? doc.nama_penerima : doc.nama_pengelola}
+                    onChange={(v) => update(isSBBK ? { nama_penerima: v } : { nama_pengelola: v })}
+                    placeholder="(Nama)"
+                    align="center"
+                    className="font-semibold"
+                  />
+                </td>
+                <td></td>
+                <td style={{ textAlign: "center" }}>
+                  <Editable
+                    value={isSBBK ? doc.nama_pengelola : doc.nama_pejabat}
+                    onChange={(v) => update(isSBBK ? { nama_pengelola: v } : { nama_pejabat: v })}
+                    placeholder="(Nama)"
+                    align="center"
+                    className="font-semibold"
+                  />
+                </td>
+              </tr>
+              <tr>
+                <td style={{ textAlign: "center" }}>
+                  NIP.&nbsp;
+                  <Editable
+                    value={isSBBK ? doc.nip_penerima : doc.nip_pengelola}
+                    onChange={(v) => update(isSBBK ? { nip_penerima: v } : { nip_pengelola: v })}
+                    placeholder="________________"
+                  />
+                </td>
+                <td></td>
+                <td style={{ textAlign: "center" }}>
+                  NIP.&nbsp;
+                  <Editable
+                    value={isSBBK ? doc.nip_pengelola : doc.nip_pejabat}
+                    onChange={(v) => update(isSBBK ? { nip_pengelola: v } : { nip_pejabat: v })}
+                    placeholder="________________"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div style={{ marginTop: "40pt", fontSize: "8pt", textAlign: "right", color: "#555" }}>POM-14.01/CFM.01/SOP.01/IK.143.01/F.01</div>
         </div>
       </div>
     </div>
