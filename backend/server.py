@@ -238,6 +238,109 @@ async def stock_card(item_id: str, user=Depends(get_current_user)):
     movements = await db.movements.find({"item_id": item_id}, {"_id": 0}).sort("created_at", 1).to_list(1000)
     return {"item": item, "movements": movements}
 
+# Bulk import master barang from CSV / Excel
+COLUMN_ALIASES = {
+    "kode": ["kode", "kode_barang", "kode barang", "code"],
+    "nama": ["nama", "nama_barang", "nama barang", "name"],
+    "kategori": ["kategori", "category"],
+    "satuan": ["satuan", "unit", "uom"],
+    "harga": ["harga", "harga_jual", "harga_satuan", "harga jual", "harga satuan", "price"],
+    "stok_min": ["stok_min", "stok minimum", "minimum_stock", "min_stock", "min"],
+    "stok": ["stok", "tersedia", "stock", "saldo"],
+    "is_reagen": ["is_reagen", "reagen"],
+    "expiry_date": ["expiry_date", "kadaluarsa", "exp", "tanggal_kadaluarsa"],
+}
+
+def _map_row(row: dict) -> dict:
+    lower = {str(k).strip().lower(): v for k, v in row.items() if k is not None}
+    out = {}
+    for field, aliases in COLUMN_ALIASES.items():
+        for a in aliases:
+            if a in lower and lower[a] not in (None, ""):
+                out[field] = lower[a]
+                break
+    return out
+
+@api.post("/items/bulk-import")
+async def bulk_import_items(file: UploadFile = File(...), user=Depends(require_role("admin_gudang", "admin"))):
+    import pandas as pd
+    raw = await file.read()
+    fname = (file.filename or "").lower()
+    try:
+        if fname.endswith(".xlsx") or fname.endswith(".xls"):
+            df = pd.read_excel(io.BytesIO(raw), dtype=str, engine="openpyxl")
+        else:
+            # try utf-8 then latin-1
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                text = raw.decode("latin-1")
+            df = pd.read_csv(io.StringIO(text), dtype=str, sep=None, engine="python")
+    except Exception as e:
+        raise HTTPException(400, f"Gagal membaca file: {e}")
+
+    created, updated, errors = [], [], []
+    existing_codes = {x["kode"]: x for x in await db.items.find({}, {"_id": 0}).to_list(5000)}
+
+    for idx, raw_row in enumerate(df.fillna("").to_dict(orient="records")):
+        mapped = _map_row(raw_row)
+        kode = str(mapped.get("kode", "")).strip()
+        nama = str(mapped.get("nama", "")).strip()
+        if not kode or not nama:
+            errors.append({"row": idx + 2, "error": "Kode atau Nama kosong"})
+            continue
+        def _to_num(v, default=0):
+            try:
+                if v is None or v == "":
+                    return default
+                s = str(v).replace(",", "").replace(".", "") if isinstance(v, str) and v.count(",") > 0 and v.count(".") == 0 else str(v).replace(",", "")
+                return float(s)
+            except Exception:
+                return default
+        def _to_int(v, default=0):
+            try:
+                return int(float(_to_num(v, default)))
+            except Exception:
+                return default
+        doc = {
+            "kode": kode,
+            "nama": nama,
+            "kategori": str(mapped.get("kategori", "")).strip(),
+            "satuan": str(mapped.get("satuan", "pcs")).strip() or "pcs",
+            "harga": _to_num(mapped.get("harga", 0)),
+            "stok_min": _to_int(mapped.get("stok_min", 0)),
+            "is_reagen": str(mapped.get("is_reagen", "")).strip().lower() in ("1", "true", "ya", "yes", "y"),
+            "expiry_date": str(mapped.get("expiry_date", "")).strip() or None,
+        }
+        if kode in existing_codes:
+            await db.items.update_one({"kode": kode}, {"$set": doc})
+            updated.append(kode)
+        else:
+            doc["id"] = f"item_{uuid.uuid4().hex[:10]}"
+            doc["stok"] = _to_int(mapped.get("stok", 0))
+            doc["created_at"] = iso(now_utc())
+            await db.items.insert_one(doc)
+            created.append(kode)
+    return {
+        "created": len(created),
+        "updated": len(updated),
+        "errors": errors,
+        "created_codes": created[:50],
+        "updated_codes": updated[:50],
+    }
+
+@api.get("/items/template.csv")
+async def items_template():
+    """Public template - no auth needed."""
+    csv = "kode,nama,kategori,satuan,harga,stok_min,is_reagen,expiry_date\n"
+    csv += "ATK003,Pulpen Standard,ATK,pcs,2500,20,false,\n"
+    csv += "RGN004,Asam Sulfat 98%,REAGEN,ltr,420000,2,true,2026-12-31\n"
+    return Response(
+        content=csv,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="template_items.csv"'},
+    )
+
 # -------------------- Incoming (Pembelian) --------------------
 class IncomingLine(BaseModel):
     item_id: str
@@ -253,6 +356,23 @@ class IncomingIn(BaseModel):
 
 @api.post("/incoming")
 async def create_incoming(body: IncomingIn, user=Depends(require_role("admin_gudang", "admin"))):
+    if not body.lines:
+        raise HTTPException(400, "Daftar barang tidak boleh kosong")
+    if not body.no_faktur:
+        raise HTTPException(400, "Nomor faktur wajib diisi")
+    # Validate every item_id exists and quantities are positive
+    ids = [l.item_id for l in body.lines]
+    existing = await db.items.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "nama": 1}).to_list(2000)
+    found = {x["id"] for x in existing}
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise HTTPException(400, f"Barang tidak ditemukan: {', '.join(missing)}")
+    for l in body.lines:
+        if l.jumlah <= 0:
+            raise HTTPException(400, "Jumlah harus lebih dari 0")
+        if l.harga_beli < 0:
+            raise HTTPException(400, "Harga beli tidak boleh negatif")
+
     doc_id = f"in_{uuid.uuid4().hex[:10]}"
     total = sum(l.jumlah * l.harga_beli for l in body.lines)
     doc = {
@@ -267,19 +387,34 @@ async def create_incoming(body: IncomingIn, user=Depends(require_role("admin_gud
         "created_at": iso(now_utc()),
     }
     await db.incoming.insert_one(doc)
-    # Update stok & movements
-    for l in body.lines:
-        await db.items.update_one({"id": l.item_id}, {"$inc": {"stok": l.jumlah}})
-        await db.movements.insert_one({
-            "id": f"mv_{uuid.uuid4().hex[:10]}",
-            "item_id": l.item_id,
-            "tipe": "MASUK",
-            "ref": body.no_faktur,
-            "jumlah": l.jumlah,
-            "harga": l.harga_beli,
-            "tanggal": body.tanggal,
-            "created_at": iso(now_utc()),
-        })
+    # Track applied changes for rollback on partial failure
+    applied_items = []  # [(item_id, delta_applied)]
+    inserted_movements = []  # [movement_id]
+    try:
+        for l in body.lines:
+            await db.items.update_one({"id": l.item_id}, {"$inc": {"stok": l.jumlah}})
+            applied_items.append((l.item_id, l.jumlah))
+            mv_id = f"mv_{uuid.uuid4().hex[:10]}"
+            await db.movements.insert_one({
+                "id": mv_id,
+                "item_id": l.item_id,
+                "tipe": "MASUK",
+                "ref": body.no_faktur,
+                "jumlah": l.jumlah,
+                "harga": l.harga_beli,
+                "tanggal": body.tanggal,
+                "created_at": iso(now_utc()),
+            })
+            inserted_movements.append(mv_id)
+    except Exception as e:
+        # Rollback applied changes
+        for iid, delta in applied_items:
+            await db.items.update_one({"id": iid}, {"$inc": {"stok": -delta}})
+        if inserted_movements:
+            await db.movements.delete_many({"id": {"$in": inserted_movements}})
+        await db.incoming.delete_one({"id": doc_id})
+        log.error(f"Incoming rollback: {e}")
+        raise HTTPException(500, f"Transaksi gagal, dibatalkan: {e}")
     return clean(doc)
 
 @api.get("/incoming")
@@ -355,45 +490,63 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
     if spb["status"] != "PENDING":
         raise HTTPException(400, "SPB already processed")
     if body.action == "APPROVE":
-        # Validate stok
+        # Validate stok upfront
         for l in spb["lines"]:
             it = await db.items.find_one({"id": l["item_id"]}, {"_id": 0})
-            if not it or it.get("stok", 0) < l["jumlah"]:
-                raise HTTPException(400, f"Stok tidak cukup untuk {it['nama'] if it else l['item_id']}")
-        # Reduce stok, create SBBK, log movements
+            if not it:
+                raise HTTPException(400, f"Barang tidak ditemukan: {l['item_id']}")
+            if it.get("stok", 0) < l["jumlah"]:
+                raise HTTPException(400, f"Stok tidak cukup untuk {it['nama']} (tersedia {it.get('stok', 0)}, diminta {l['jumlah']})")
+        # Atomic block with manual rollback (Mongo standalone has no multi-doc tx)
         sbbk_count = await db.sbbk.count_documents({})
         sbbk_nomor = gen_nomor_surat("SBBK", sbbk_count + 1)
-        for l in spb["lines"]:
-            await db.items.update_one({"id": l["item_id"]}, {"$inc": {"stok": -l["jumlah"]}})
-            await db.movements.insert_one({
-                "id": f"mv_{uuid.uuid4().hex[:10]}",
-                "item_id": l["item_id"],
-                "tipe": "KELUAR",
-                "ref": sbbk_nomor,
-                "jumlah": l["jumlah"],
-                "harga": 0,
-                "tanggal": now_utc().strftime("%Y-%m-%d"),
+        applied_items = []  # [(item_id, qty)] - delta to roll back
+        inserted_movements = []
+        sbbk_id = f"sbbk_{uuid.uuid4().hex[:10]}"
+        try:
+            for l in spb["lines"]:
+                await db.items.update_one({"id": l["item_id"]}, {"$inc": {"stok": -l["jumlah"]}})
+                applied_items.append((l["item_id"], l["jumlah"]))
+                mv_id = f"mv_{uuid.uuid4().hex[:10]}"
+                await db.movements.insert_one({
+                    "id": mv_id,
+                    "item_id": l["item_id"],
+                    "tipe": "KELUAR",
+                    "ref": sbbk_nomor,
+                    "jumlah": l["jumlah"],
+                    "harga": 0,
+                    "tanggal": now_utc().strftime("%Y-%m-%d"),
+                    "created_at": iso(now_utc()),
+                })
+                inserted_movements.append(mv_id)
+            sbbk = {
+                "id": sbbk_id,
+                "nomor": sbbk_nomor,
+                "spb_id": spb_id,
+                "spb_nomor": spb["nomor"],
+                "nama_penerima": spb["nama_peminta"],
+                "unit_kerja": spb["unit_kerja"],
+                "lines": spb["lines"],
                 "created_at": iso(now_utc()),
-            })
-        sbbk = {
-            "id": f"sbbk_{uuid.uuid4().hex[:10]}",
-            "nomor": sbbk_nomor,
-            "spb_id": spb_id,
-            "spb_nomor": spb["nomor"],
-            "nama_penerima": spb["nama_peminta"],
-            "unit_kerja": spb["unit_kerja"],
-            "lines": spb["lines"],
-            "created_at": iso(now_utc()),
-        }
-        await db.sbbk.insert_one(sbbk)
-        await db.spb.update_one({"id": spb_id}, {"$set": {
-            "status": "APPROVED",
-            "approver_id": user["user_id"],
-            "approver_name": user["name"],
-            "approver_paraf": body.paraf,
-            "approved_at": iso(now_utc()),
-            "sbbk_nomor": sbbk_nomor,
-        }})
+            }
+            await db.sbbk.insert_one(sbbk)
+            await db.spb.update_one({"id": spb_id}, {"$set": {
+                "status": "APPROVED",
+                "approver_id": user["user_id"],
+                "approver_name": user["name"],
+                "approver_paraf": body.paraf,
+                "approved_at": iso(now_utc()),
+                "sbbk_nomor": sbbk_nomor,
+            }})
+        except Exception as e:
+            # Compensating rollback
+            for iid, qty in applied_items:
+                await db.items.update_one({"id": iid}, {"$inc": {"stok": qty}})
+            if inserted_movements:
+                await db.movements.delete_many({"id": {"$in": inserted_movements}})
+            await db.sbbk.delete_one({"id": sbbk_id})
+            log.error(f"Approval rollback for SPB {spb_id}: {e}")
+            raise HTTPException(500, f"Approval gagal, perubahan dibatalkan: {e}")
     else:
         await db.spb.update_one({"id": spb_id}, {"$set": {
             "status": "REJECTED",

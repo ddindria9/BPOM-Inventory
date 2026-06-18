@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const { setUser } = useAuth();
   const processed = useRef(false);
 
   useEffect(() => {
@@ -16,13 +18,16 @@ export default function AuthCallback() {
     (async () => {
       try {
         const { data } = await api.post("/auth/session", { session_id: sid });
+        // CRITICAL: update auth context BEFORE navigating so Protected sees the user
+        setUser(data.user);
+        // Clean URL hash, then navigate
         window.history.replaceState({}, "", "/dashboard");
-        navigate("/dashboard", { replace: true, state: { user: data.user } });
+        navigate("/dashboard", { replace: true });
       } catch (e) {
         navigate("/login", { replace: true });
       }
     })();
-  }, [navigate]);
+  }, [navigate, setUser]);
 
   return (
     <div className="min-h-screen grid place-items-center text-slate-500">
