@@ -23,14 +23,13 @@ export default function AuthCallback() {
           setUser(res.data);
           navigate("/dashboard", { replace: true });
         })
-        .catch(() => {
-          // Jika gagal, hapus token dan balik ke login
+        .catch((err) => {
+          console.error("Auth error:", err);
           localStorage.removeItem("token");
           delete api.defaults.headers.common["Authorization"];
           navigate("/login", { replace: true });
         });
     } else {
-      // Tidak ada token di URL, balik ke login
       navigate("/login", { replace: true });
     }
   }, [navigate, setUser]);
