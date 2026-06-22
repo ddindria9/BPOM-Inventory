@@ -11,11 +11,8 @@ export default function AuthCallback() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
     if (token) {
-      // Simpan token di localStorage
       localStorage.setItem("token", token);
-      // Set header Authorization untuk semua request axios
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      // Ambil data user
       api.get("/auth/me")
         .then(res => {
           setUser(res.data);
@@ -25,7 +22,6 @@ export default function AuthCallback() {
           navigate("/login", { replace: true });
         });
     } else {
-      // Tidak ada token, balik ke login
       navigate("/login", { replace: true });
     }
   }, [navigate, setUser]);
