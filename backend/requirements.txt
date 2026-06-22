@@ -91,3 +91,6 @@ watchfiles
 websockets
 yarl
 zipp
+httpx
+PyJWT
+aiofiles
