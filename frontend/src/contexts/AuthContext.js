@@ -19,22 +19,20 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    // If returning from OAuth callback, skip /me check; AuthCallback handles it.
-    if (window.location.hash?.includes("session_id=")) {
-      setLoading(false);
-      return;
-    }
+    // Langsung cek auth tanpa mengecek hash session_id
     checkAuth();
   }, [checkAuth]);
 
   const logout = async () => {
-    try { await api.post("/auth/logout"); } catch {}
+    try {
+      await api.post("/auth/logout");
+    } catch {}
     setUser(null);
     window.location.href = "/login";
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading, logout, refresh: checkAuth }}>
+    <AuthContext.Provider value={{ user, setUser, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );
