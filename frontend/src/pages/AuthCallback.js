@@ -10,18 +10,27 @@ export default function AuthCallback() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
+    
     if (token) {
+      // Simpan token di localStorage
       localStorage.setItem("token", token);
+      // Set header untuk semua request axios
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      
+      // Ambil data user
       api.get("/auth/me")
         .then(res => {
           setUser(res.data);
           navigate("/dashboard", { replace: true });
         })
         .catch(() => {
+          // Jika gagal, hapus token dan balik ke login
+          localStorage.removeItem("token");
+          delete api.defaults.headers.common["Authorization"];
           navigate("/login", { replace: true });
         });
     } else {
+      // Tidak ada token di URL, balik ke login
       navigate("/login", { replace: true });
     }
   }, [navigate, setUser]);
