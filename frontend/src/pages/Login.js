@@ -6,7 +6,7 @@ import { BACKEND_URL } from "../lib/api";
 export default function Login() {
   const handleLogin = () => {
     // Redirect ke endpoint Google OAuth di backend
-    window.location.href = `${BACKEND_URL}/login/google`;
+    window.location.href = `${BACKEND_URL}/api/login/google`;
   };
 
   return (
