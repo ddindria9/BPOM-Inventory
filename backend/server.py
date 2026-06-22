@@ -1,22 +1,32 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, UploadFile, File, Response, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
-import os, io, uuid, logging, requests, re
+import os, io, uuid, logging, re, shutil, aiofiles
 from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
+from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 import qrcode
+import jwt
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 MONGO_URL = os.environ['MONGO_URL']
 DB_NAME = os.environ['DB_NAME']
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI')
+SECRET_KEY = os.environ.get('SECRET_KEY', 'ganti_dengan_random_string')
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 APP_NAME = os.environ.get("APP_NAME", "bpom-jember-inventory")
+
+# Folder untuk upload file lokal
+UPLOAD_DIR = ROOT_DIR / 'uploads'
+UPLOAD_DIR.mkdir(exist_ok=True)
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -27,55 +37,31 @@ api = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s - %(message)s')
 log = logging.getLogger("inventory")
 
-# -------------------- Storage --------------------
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-storage_key: Optional[str] = None
-
-def init_storage():
-    global storage_key
-    if storage_key:
-        return storage_key
-    if not EMERGENT_KEY:
-        raise RuntimeError("EMERGENT_LLM_KEY missing")
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
-
-def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    r = requests.put(f"{STORAGE_URL}/objects/{path}",
-                     headers={"X-Storage-Key": key, "Content-Type": content_type},
-                     data=data, timeout=120)
-    r.raise_for_status()
-    return r.json()
-
-def get_object(path: str):
-    key = init_storage()
-    r = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    r.raise_for_status()
-    return r.content, r.headers.get("Content-Type", "application/octet-stream")
-
 # -------------------- Helpers --------------------
 def now_utc():
     return datetime.now(timezone.utc)
 
 def iso(dt: datetime) -> str:
-    if not dt:
-        return None
-    if isinstance(dt, str):
-        return dt
-    return dt.isoformat()
+    return dt.isoformat() if dt else None
 
 def clean(doc: dict) -> dict:
-    """Remove MongoDB _id."""
-    if not doc:
-        return doc
-    doc.pop("_id", None)
+    if doc:
+        doc.pop("_id", None)
     return doc
 
-# -------------------- Auth --------------------
-ROLES = ["admin_gudang", "peminta", "approver", "pengelola_aset", "admin"]
+# -------------------- JWT Auth --------------------
+def create_jwt(user_id: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "exp": now_utc() + timedelta(days=7)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+
+def decode_jwt(token: str) -> dict:
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(401, "Invalid token")
 
 async def get_current_user(request: Request, authorization: Optional[str] = Header(None)):
     token = request.cookies.get("session_token")
@@ -83,17 +69,19 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
         token = authorization.split(" ", 1)[1]
     if not token:
         raise HTTPException(401, "Not authenticated")
-    session = await db.user_sessions.find_one({"session_token": token}, {"_id": 0})
-    if not session:
-        raise HTTPException(401, "Invalid session")
-    expires_at = session.get("expires_at")
-    if isinstance(expires_at, str):
-        expires_at = datetime.fromisoformat(expires_at)
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < now_utc():
-        raise HTTPException(401, "Session expired")
-    user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+    try:
+        payload = decode_jwt(token)
+    except HTTPException:
+        # Cek di database sesi (opsional)
+        session = await db.user_sessions.find_one({"session_token": token})
+        if not session:
+            raise HTTPException(401, "Invalid session")
+        # Jika token masih valid, lanjut
+        user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+        if not user:
+            raise HTTPException(401, "User not found")
+        return user
+    user = await db.users.find_one({"user_id": payload["user_id"]}, {"_id": 0})
     if not user:
         raise HTTPException(401, "User not found")
     return user
@@ -105,54 +93,87 @@ def require_role(*roles):
         return user
     return dep
 
-class SessionRequest(BaseModel):
-    session_id: str
+# -------------------- Auth Endpoints --------------------
+@api.get("/login/google")
+async def login_google():
+    """Redirect to Google OAuth login."""
+    from urllib.parse import urlencode
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+    }
+    url = "https://accounts.google.com/o/oauth2/auth?" + urlencode(params)
+    return RedirectResponse(url)
 
-@api.post("/auth/session")
-async def auth_session(payload: SessionRequest, response: Response):
-    sid = payload.session_id
-    r = requests.get(
-        "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-        headers={"X-Session-ID": sid}, timeout=15
-    )
-    if r.status_code != 200:
-        raise HTTPException(401, "Invalid session_id")
-    data = r.json()
-    email = data["email"]
-    # Find or create user
+@api.get("/auth/callback")
+async def auth_callback(code: str, response: Response):
+    """Google OAuth callback - exchange code for token."""
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(token_url, data=data, timeout=30)
+        if resp.status_code != 200:
+            raise HTTPException(400, "Failed to exchange code")
+        token_info = resp.json()
+
+    # Get user info
+    user_info_url = "https://www.googleapis.com/oauth2/v1/userinfo"
+    headers = {"Authorization": f"Bearer {token_info['access_token']}"}
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(user_info_url, headers=headers)
+        if resp.status_code != 200:
+            raise HTTPException(400, "Failed to get user info")
+        user_info = resp.json()
+
+    email = user_info["email"]
     existing = await db.users.find_one({"email": email}, {"_id": 0})
     if existing:
         user_id = existing["user_id"]
         role = existing.get("role", "peminta")
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
-        # First user becomes admin
         count = await db.users.count_documents({})
         role = "admin" if count == 0 else "peminta"
         await db.users.insert_one({
             "user_id": user_id,
             "email": email,
-            "name": data.get("name", email),
-            "picture": data.get("picture", ""),
+            "name": user_info.get("name", email),
+            "picture": user_info.get("picture", ""),
             "role": role,
             "unit_kerja": "",
             "created_at": iso(now_utc())
         })
-    # Store session
-    session_token = data["session_token"]
-    expires = now_utc() + timedelta(days=7)
+
+    # Create JWT
+    token = create_jwt(user_id)
+    # Save session in DB (optional)
     await db.user_sessions.insert_one({
         "user_id": user_id,
-        "session_token": session_token,
-        "expires_at": iso(expires),
+        "session_token": token,
+        "expires_at": iso(now_utc() + timedelta(days=7)),
         "created_at": iso(now_utc())
     })
+
+    # Set cookie and redirect to frontend
+    response = RedirectResponse(url=FRONTEND_URL)
     response.set_cookie(
-        key="session_token", value=session_token,
-        max_age=7*24*60*60, httponly=True, secure=True, samesite="none", path="/"
+        key="session_token",
+        value=token,
+        max_age=7*24*60*60,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        path="/"
     )
-    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
-    return {"user": user, "session_token": session_token}
+    return response
 
 @api.get("/auth/me")
 async def auth_me(user=Depends(get_current_user)):
@@ -166,7 +187,9 @@ async def auth_logout(request: Request, response: Response):
     response.delete_cookie("session_token", path="/")
     return {"ok": True}
 
-# -------------------- Users mgmt --------------------
+# -------------------- Users --------------------
+ROLES = ["admin_gudang", "peminta", "approver", "pengelola_aset", "admin"]
+
 class UserUpdate(BaseModel):
     role: Optional[str] = None
     unit_kerja: Optional[str] = None
@@ -201,7 +224,7 @@ class ItemIn(BaseModel):
     harga: float = 0
     stok_min: int = 0
     is_reagen: bool = False
-    expiry_date: Optional[str] = None  # for reagen
+    expiry_date: Optional[str] = None
 
 @api.get("/items")
 async def list_items(user=Depends(get_current_user)):
@@ -270,7 +293,6 @@ async def bulk_import_items(file: UploadFile = File(...), user=Depends(require_r
         if fname.endswith(".xlsx") or fname.endswith(".xls"):
             df = pd.read_excel(io.BytesIO(raw), dtype=str, engine="openpyxl")
         else:
-            # try utf-8 then latin-1
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -331,7 +353,6 @@ async def bulk_import_items(file: UploadFile = File(...), user=Depends(require_r
 
 @api.get("/items/template.csv")
 async def items_template():
-    """Public template - no auth needed."""
     csv = "kode,nama,kategori,satuan,harga,stok_min,is_reagen,expiry_date\n"
     csv += "ATK003,Pulpen Standard,ATK,pcs,2500,20,false,\n"
     csv += "RGN004,Asam Sulfat 98%,REAGEN,ltr,420000,2,true,2026-12-31\n"
@@ -360,7 +381,6 @@ async def create_incoming(body: IncomingIn, user=Depends(require_role("admin_gud
         raise HTTPException(400, "Daftar barang tidak boleh kosong")
     if not body.no_faktur:
         raise HTTPException(400, "Nomor faktur wajib diisi")
-    # Validate every item_id exists and quantities are positive
     ids = [l.item_id for l in body.lines]
     existing = await db.items.find({"id": {"$in": ids}}, {"_id": 0, "id": 1, "nama": 1}).to_list(2000)
     found = {x["id"] for x in existing}
@@ -387,9 +407,8 @@ async def create_incoming(body: IncomingIn, user=Depends(require_role("admin_gud
         "created_at": iso(now_utc()),
     }
     await db.incoming.insert_one(doc)
-    # Track applied changes for rollback on partial failure
-    applied_items = []  # [(item_id, delta_applied)]
-    inserted_movements = []  # [movement_id]
+    applied_items = []
+    inserted_movements = []
     try:
         for l in body.lines:
             await db.items.update_one({"id": l.item_id}, {"$inc": {"stok": l.jumlah}})
@@ -407,7 +426,6 @@ async def create_incoming(body: IncomingIn, user=Depends(require_role("admin_gud
             })
             inserted_movements.append(mv_id)
     except Exception as e:
-        # Rollback applied changes
         for iid, delta in applied_items:
             await db.items.update_one({"id": iid}, {"$inc": {"stok": -delta}})
         if inserted_movements:
@@ -441,7 +459,6 @@ def gen_nomor_surat(prefix: str, seq: int):
 
 @api.post("/spb")
 async def create_spb(body: SPBIn):
-    """Public endpoint - employees can submit via link/QR."""
     count = await db.spb.count_documents({})
     nomor = gen_nomor_surat("PSD", count + 1)
     doc = {
@@ -478,7 +495,7 @@ async def get_spb(spb_id: str):
     return doc
 
 class ApprovalAction(BaseModel):
-    action: str  # APPROVE or REJECT
+    action: str
     paraf: str = ""
     alasan: str = ""
 
@@ -490,17 +507,15 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
     if spb["status"] != "PENDING":
         raise HTTPException(400, "SPB already processed")
     if body.action == "APPROVE":
-        # Validate stok upfront
         for l in spb["lines"]:
             it = await db.items.find_one({"id": l["item_id"]}, {"_id": 0})
             if not it:
                 raise HTTPException(400, f"Barang tidak ditemukan: {l['item_id']}")
             if it.get("stok", 0) < l["jumlah"]:
                 raise HTTPException(400, f"Stok tidak cukup untuk {it['nama']} (tersedia {it.get('stok', 0)}, diminta {l['jumlah']})")
-        # Atomic block with manual rollback (Mongo standalone has no multi-doc tx)
         sbbk_count = await db.sbbk.count_documents({})
         sbbk_nomor = gen_nomor_surat("SBBK", sbbk_count + 1)
-        applied_items = []  # [(item_id, qty)] - delta to roll back
+        applied_items = []
         inserted_movements = []
         sbbk_id = f"sbbk_{uuid.uuid4().hex[:10]}"
         try:
@@ -539,7 +554,6 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
                 "sbbk_nomor": sbbk_nomor,
             }})
         except Exception as e:
-            # Compensating rollback
             for iid, qty in applied_items:
                 await db.items.update_one({"id": iid}, {"$inc": {"stok": qty}})
             if inserted_movements:
@@ -577,7 +591,7 @@ class AssetIn(BaseModel):
     lokasi: str = ""
     tahun_perolehan: Optional[int] = None
     harga: float = 0
-    kondisi: str = "BAIK"  # BAIK, RUSAK_RINGAN, RUSAK_BERAT
+    kondisi: str = "BAIK"
     bast: str = ""
     foto_path: Optional[str] = None
 
@@ -588,7 +602,6 @@ async def list_assets(user=Depends(get_current_user)):
 
 @api.get("/assets/{asset_id}")
 async def get_asset(asset_id: str):
-    """Public for QR-scan inspection page."""
     doc = await db.assets.find_one({"id": asset_id}, {"_id": 0})
     if not doc:
         raise HTTPException(404, "Asset not found")
@@ -613,7 +626,6 @@ class KondisiUpdate(BaseModel):
 
 @api.post("/assets/{asset_id}/kondisi")
 async def update_kondisi(asset_id: str, body: KondisiUpdate, user=Depends(get_current_user)):
-    """Mobile-friendly inspection - any authenticated user can update."""
     if body.kondisi not in ["BAIK", "RUSAK_RINGAN", "RUSAK_BERAT"]:
         raise HTTPException(400, "Invalid kondisi")
     await db.assets.update_one({"id": asset_id}, {"$set": {"kondisi": body.kondisi, "catatan_kondisi": body.catatan}})
@@ -635,7 +647,6 @@ async def delete_asset(asset_id: str, user=Depends(require_role("pengelola_aset"
 
 @api.get("/assets/{asset_id}/qr.png")
 async def asset_qr(asset_id: str, frontend_url: str = Query(...)):
-    """Generate QR code PNG that points to mobile inspection page."""
     url = f"{frontend_url}/asset-inspect/{asset_id}"
     img = qrcode.make(url, box_size=10, border=2)
     buf = io.BytesIO()
@@ -643,33 +654,37 @@ async def asset_qr(asset_id: str, frontend_url: str = Query(...)):
     buf.seek(0)
     return Response(content=buf.read(), media_type="image/png")
 
-# -------------------- Upload --------------------
+# -------------------- Upload (Local Storage) --------------------
 @api.post("/upload")
 async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
+    # Simpan file lokal
     ext = (file.filename.split(".")[-1] if "." in file.filename else "bin").lower()
-    path = f"{APP_NAME}/uploads/{user['user_id']}/{uuid.uuid4()}.{ext}"
-    data = await file.read()
-    result = put_object(path, data, file.content_type or "application/octet-stream")
+    safe_filename = f"{uuid.uuid4()}.{ext}"
+    user_dir = UPLOAD_DIR / user['user_id']
+    user_dir.mkdir(exist_ok=True)
+    file_path = user_dir / safe_filename
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
     rec_id = str(uuid.uuid4())
     await db.files.insert_one({
         "id": rec_id,
-        "storage_path": result["path"],
+        "path": str(file_path.relative_to(ROOT_DIR)),
         "original_filename": file.filename,
         "content_type": file.content_type,
-        "size": result["size"],
+        "size": len(content),
         "is_deleted": False,
         "uploaded_by": user["user_id"],
         "created_at": iso(now_utc())
     })
-    return {"id": rec_id, "path": result["path"], "url": f"/api/files/{result['path']}"}
+    return {"id": rec_id, "path": str(file_path.relative_to(ROOT_DIR)), "url": f"/api/files/{file_path.relative_to(ROOT_DIR)}"}
 
 @api.get("/files/{path:path}")
 async def serve_file(path: str):
-    rec = await db.files.find_one({"storage_path": path, "is_deleted": False}, {"_id": 0})
-    if not rec:
+    file_path = ROOT_DIR / path
+    if not file_path.exists():
         raise HTTPException(404, "File not found")
-    data, ct = get_object(path)
-    return Response(content=data, media_type=rec.get("content_type", ct))
+    return FileResponse(file_path)
 
 # -------------------- Dashboard --------------------
 @api.get("/dashboard/stats")
@@ -678,7 +693,6 @@ async def dashboard_stats(user=Depends(get_current_user)):
     assets = await db.assets.find({}, {"_id": 0}).to_list(2000)
     low_stock = [i for i in items if i.get("stok", 0) <= i.get("stok_min", 0)]
     total_nilai = sum(i.get("stok", 0) * i.get("harga", 0) for i in items)
-    # Expiry alerts (reagen with expiry within 90 days)
     expiring = []
     today = now_utc().date()
     for it in items:
@@ -722,7 +736,6 @@ class SettingsIn(BaseModel):
     sbbk_template_doc_id: Optional[str] = None
 
 def _extract_doc_id(s: str) -> str:
-    """Accept either raw doc_id or full URL and return doc_id."""
     if not s:
         return ""
     s = s.strip()
@@ -743,7 +756,6 @@ async def update_settings(body: SettingsIn, user=Depends(require_role("admin", "
 
 # -------------------- Surat (Google Docs template render) --------------------
 def _fetch_gdoc_html(doc_id: str) -> str:
-    """Fetch publicly-shared Google Doc as HTML."""
     url = f"https://docs.google.com/document/d/{doc_id}/export?format=html"
     r = requests.get(url, timeout=30, allow_redirects=True)
     if r.status_code != 200 or "<body" not in r.text:
@@ -762,17 +774,11 @@ def _fmt_tanggal(dt_str: str) -> str:
         return dt_str
 
 def _render_template(html_text: str, ctx: dict, rows: list) -> str:
-    """Replace {{key}} placeholders + expand row template.
-    If NO placeholders detected, falls back to auto-fill based on table structure.
-    """
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(html_text, "lxml")
-
     raw = str(soup)
     has_explicit_placeholder = "{{" in raw
-
     if has_explicit_placeholder:
-        # --- Explicit placeholder mode ---
         row_keys = set(re.findall(r"\{\{\s*row\.([a-zA-Z0-9_]+)\s*\}\}", raw))
         if row_keys:
             for tr in list(soup.find_all("tr")):
@@ -793,25 +799,21 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
             result = re.sub(r"\{\{\s*" + re.escape(k) + r"\s*\}\}", "" if v is None else str(v), result)
         return result
 
-    # --- Auto-fill mode (no placeholders found) ---
+    # Auto-fill mode
     def _txt(el):
         return el.get_text(separator=" ", strip=True) if el else ""
 
-    # 1) Inject nomor after "Nomor :" anywhere in document
     for tag in soup.find_all(["p", "span", "div", "td"]):
         t = _txt(tag)
         if re.match(r"^\s*Nomor\s*:\s*$", t):
-            # Append nomor text to this element
             tag.append(" " + str(ctx.get("nomor", "")))
             break
         if t.startswith("Nomor :") and len(t) < 15:
-            # Replace whole text
             for child in list(tag.children):
                 child.extract()
             tag.append(f"Nomor : {ctx.get('nomor', '')}")
             break
 
-    # 2) Fill info table: rows with label + ":" + empty cell
     LABEL_MAP = {
         "unit kerja": "unit_kerja",
         "no. dan tgl. spb": "tanggal_spb",
@@ -825,17 +827,15 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
             continue
         label = _txt(tds[0]).lower().strip().rstrip(":").strip()
         if label in LABEL_MAP:
-            target_cell = tds[-1]  # last cell is the value cell
+            target_cell = tds[-1]
             if not _txt(target_cell):
                 key = LABEL_MAP[label]
                 val = ctx.get(key, "")
                 if val:
-                    # Insert as a paragraph to preserve doc styling
                     new_p = soup.new_tag("p")
                     new_p.string = str(val)
                     target_cell.append(new_p)
 
-    # 3) Data table auto-fill: find table whose header contains "Nama Barang"
     target_table = None
     for tbl in soup.find_all("table"):
         first_tr = tbl.find("tr")
@@ -848,33 +848,26 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
 
     if target_table and rows:
         all_trs = target_table.find_all("tr")
-        # Identify header rows (first 1 or 2 rows are headers). Header row contains "No." and "Nama Barang"
         header_count = 1
         if len(all_trs) >= 2:
             r1_text = _txt(all_trs[1]).lower()
-            # If row 2 has "permintaan" or "disetujui" then header is 2 rows
             if "permintaan" in r1_text or "disetujui" in r1_text:
                 header_count = 2
         header_rows = all_trs[:header_count]
         data_rows = all_trs[header_count:]
 
-        # Determine column mapping from header text
         col_keys = []
         if header_count == 2:
-            # Build combined header (top + sub-headers)
             top_cells = header_rows[0].find_all(["td", "th"])
             sub_cells = header_rows[1].find_all(["td", "th"])
-            # Build flat list by considering colspan
             top_flat = []
             for c in top_cells:
                 cs = int(c.get("colspan", 1))
                 for _ in range(cs):
                     top_flat.append(_txt(c).lower())
-            # Distribute sub cells under top
             sub_iter = iter(sub_cells)
             for i, t in enumerate(top_flat):
                 if "jumlah" in t and i < len(top_flat) - 1 and top_flat[i] == top_flat[i + 1]:
-                    # this is a merged "Jumlah" header spanning permintaan|disetujui
                     sub = _txt(next(sub_iter, soup.new_tag("td"))).lower()
                     col_keys.append("permintaan" if "perminta" in sub else "disetujui")
                 else:
@@ -882,7 +875,6 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
         else:
             col_keys = [_txt(c).lower() for c in header_rows[0].find_all(["td", "th"])]
 
-        # Map header label -> data key
         def header_to_key(h):
             h = h.strip()
             if "no" == h or h.startswith("no."):
@@ -904,15 +896,10 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
             return None
 
         data_keys = [header_to_key(h) for h in col_keys]
-
-        # Take first template data row to clone styling
         template_row = data_rows[0] if data_rows else None
-
         if template_row:
-            # Remove all existing data rows
             for r in data_rows:
                 r.extract()
-            # Build a new row per data item
             for r in rows:
                 new_tr = BeautifulSoup(str(template_row), "lxml").find("tr")
                 cells = new_tr.find_all(["td", "th"])
@@ -921,7 +908,6 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
                         break
                     key = data_keys[ci]
                     val = r.get(key, "") if key else ""
-                    # Clear cell content while preserving cell styling
                     for ch in list(cell.children):
                         ch.extract()
                     if val != "":
@@ -930,8 +916,6 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
                         cell.append(new_p)
                 target_table.append(new_tr)
 
-    # 4) Fill signature block: detect tables with "NIP." labels and try to fill names above
-    # Look for a table with 3 cells in last row containing "NIP."
     for tbl in soup.find_all("table"):
         trs = tbl.find_all("tr")
         if len(trs) < 2:
@@ -940,12 +924,10 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
         cells = last_tr.find_all(["td", "th"])
         if not (len(cells) >= 2 and all("NIP" in _txt(c) for c in cells if _txt(c))):
             continue
-        # This is a signature table. First row = labels (Pengelola Gudang / Pejabat Struktural / Yang Menerima)
         first_cells = trs[0].find_all(["td", "th"])
         if len(first_cells) < 2:
             continue
         labels = [_txt(c).lower() for c in first_cells]
-        # The row right above NIP row (or 2nd from last) is for names
         name_row = trs[-2] if len(trs) >= 2 else None
         if name_row:
             name_cells = name_row.find_all(["td", "th"])
@@ -1034,7 +1016,6 @@ async def render_surat(type: str, spb_id: str, user=Depends(get_current_user)):
 
 @api.get("/surat/data/{type}/{spb_id}")
 async def render_surat_data(type: str, spb_id: str, user=Depends(get_current_user)):
-    """Returns the variables that would be substituted for this transaction (for debugging template)."""
     if type not in ("spb", "sbbk"):
         raise HTTPException(400, "Type harus 'spb' atau 'sbbk'")
     spb = await db.spb.find_one({"id": spb_id}, {"_id": 0})
@@ -1045,10 +1026,6 @@ async def render_surat_data(type: str, spb_id: str, user=Depends(get_current_use
     return {"context": ctx, "rows": rows}
 
 # -------------------- Reports --------------------
-async def report_asset_condition(user=Depends(get_current_user)):
-    assets = await db.assets.find({}, {"_id": 0}).sort("nup", 1).to_list(5000)
-    return assets
-
 @api.get("/reports/stock-opname")
 async def report_stock_opname(user=Depends(get_current_user)):
     items = await db.items.find({}, {"_id": 0}).sort("kode", 1).to_list(5000)
@@ -1057,7 +1034,6 @@ async def report_stock_opname(user=Depends(get_current_user)):
 # -------------------- Seed --------------------
 @api.post("/admin/seed")
 async def seed_data(user=Depends(get_current_user)):
-    """Seed sample data. Only allowed if items collection is empty or by admin."""
     count = await db.items.count_documents({})
     if count > 0 and user.get("role") != "admin":
         raise HTTPException(400, "Data already exists")
@@ -1075,7 +1051,6 @@ async def seed_data(user=Depends(get_current_user)):
         s["id"] = f"item_{uuid.uuid4().hex[:10]}"
         s["created_at"] = iso(now_utc())
         await db.items.insert_one(s)
-    # Sample assets
     asset_samples = [
         {"nup": "BMN-001", "nama": "PC Desktop Dell OptiPlex", "kategori": "PERANGKAT IT", "lokasi": "Lab Mikrobiologi", "tahun_perolehan": 2023, "harga": 12000000, "kondisi": "BAIK", "bast": "BAST/2023/001"},
         {"nup": "BMN-002", "nama": "Kursi Kantor Ergonomis", "kategori": "MEUBELAIR", "lokasi": "R. Kepala", "tahun_perolehan": 2022, "harga": 2500000, "kondisi": "BAIK", "bast": "BAST/2022/045"},
@@ -1097,11 +1072,7 @@ async def root():
 # -------------------- Startup --------------------
 @app.on_event("startup")
 async def startup():
-    try:
-        init_storage()
-        log.info("Storage initialized")
-    except Exception as e:
-        log.warning(f"Storage init failed (will retry on first use): {e}")
+    log.info("Starting up...")
     await db.items.create_index("kode", unique=False)
     await db.movements.create_index("item_id")
     await db.users.create_index("email", unique=True)
