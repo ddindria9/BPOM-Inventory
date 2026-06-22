@@ -62,21 +62,21 @@ def decode_jwt(token: str) -> dict:
         return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise HTTPException(401, "Invalid token")
-
 async def get_current_user(request: Request, authorization: Optional[str] = Header(None)):
     token = None
-    # 1. Cek header Authorization dulu
+    # PRIORITAS: Cek header Authorization dulu
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1]
-    # 2. Kalau tidak ada, cek cookie
+    # Jika tidak ada di header, cek cookie (opsional, tapi kita abaikan)
     if not token:
         token = request.cookies.get("session_token")
     if not token:
         raise HTTPException(401, "Not authenticated")
+    
     try:
         payload = decode_jwt(token)
     except jwt.PyJWTError:
-        # Cek di database sesi (opsional, kalau masih pakai)
+        # Fallback ke database session (jika masih pakai)
         session = await db.user_sessions.find_one({"session_token": token})
         if not session:
             raise HTTPException(401, "Invalid session")
@@ -84,6 +84,7 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
         if not user:
             raise HTTPException(401, "User not found")
         return user
+    
     user = await db.users.find_one({"user_id": payload["user_id"]}, {"_id": 0})
     if not user:
         raise HTTPException(401, "User not found")
