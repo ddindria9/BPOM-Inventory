@@ -152,40 +152,16 @@ async def auth_callback(code: str, response: Response):
             "created_at": iso(now_utc())
         })
 
-    # Create JWT
+    # Buat JWT
     token = create_jwt(user_id)
-    # Save session in DB (optional)
-    await db.user_sessions.insert_one({
-        "user_id": user_id,
-        "session_token": token,
-        "expires_at": iso(now_utc() + timedelta(days=7)),
-        "created_at": iso(now_utc())
-    })
-
-    # Set cookie and redirect to frontend
-    response = RedirectResponse(url=FRONTEND_URL)
-    response.set_cookie(
-        key="session_token",
-        value=token,
-        max_age=7*24*60*60,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/"
-    )
-    return response
+    # Redirect ke frontend dengan token di URL
+    redirect_url = f"{FRONTEND_URL}?token={token}"
+    return RedirectResponse(url=redirect_url)
 
 @api.get("/auth/me")
 async def auth_me(user=Depends(get_current_user)):
     return user
 
-@api.post("/auth/logout")
-async def auth_logout(request: Request, response: Response):
-    token = request.cookies.get("session_token")
-    if token:
-        await db.user_sessions.delete_one({"session_token": token})
-    response.delete_cookie("session_token", path="/")
-    return {"ok": True}
 
 # -------------------- Users --------------------
 ROLES = ["admin_gudang", "peminta", "approver", "pengelola_aset", "admin"]
