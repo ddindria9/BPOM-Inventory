@@ -30,17 +30,24 @@ function Protected({ children }) {
 
 function AppRouter() {
   const location = useLocation();
-  // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-  if (location.hash?.includes("session_id=")) {
+  const params = new URLSearchParams(location.search);
+
+  if (
+    params.has("token") ||
+    location.hash?.includes("session_id=")
+  ) {
     return <AuthCallback />;
   }
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+
       {/* Public routes */}
       <Route path="/spb-public" element={<SPBPublic />} />
       <Route path="/asset-inspect/:id" element={<AssetInspect />} />
       <Route path="/surat/:type/:id" element={<SuratPreview />} />
+
       {/* Protected app */}
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
@@ -53,6 +60,9 @@ function AppRouter() {
       <Route path="/reports" element={<Protected><Reports /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
+
+      {/* Optional fallback */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
