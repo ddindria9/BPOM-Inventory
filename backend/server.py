@@ -166,6 +166,14 @@ async def auth_callback(code: str, response: Response):
 async def auth_me(user=Depends(get_current_user)):
     return user
 
+@api.get("/public/items")
+async def public_items():
+    """Public endpoint untuk daftar barang yang tersedia (tanpa login)."""
+    # Ambil semua item, atau hanya yang stok > 0
+    items = await db.items.find({}, {"_id": 0, "id": 1, "kode": 1, "nama": 1, "satuan": 1, "stok": 1}).to_list(5000)
+    # Urutkan berdasarkan nama
+    items = sorted(items, key=lambda x: x.get("nama", ""))
+    return items
 
 # -------------------- Users --------------------
 ROLES = ["admin_gudang", "peminta", "approver", "pengelola_aset", "admin"]
