@@ -76,7 +76,7 @@ def create_users():
             "name": name,
             "role": role,
             "unit_kerja": unit_kerja,
-            "email": "",
+            "email": None,
             "picture": "",
             "created_at": now
         }
