@@ -129,7 +129,7 @@ async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
         "name": body.name,
         "role": body.role,
         "unit_kerja": body.unit_kerja,
-        "email": "",
+        "email": None,
         "picture": "",
         "created_at": iso(now_utc())
     })
