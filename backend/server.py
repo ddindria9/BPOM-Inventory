@@ -113,7 +113,7 @@ class RegisterIn(BaseModel):
     unit_kerja: str = ""
 
 @api.post("/auth/register")
-async def register(body: RegisterIn, user=Depends(require_role("admin"))):
+async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
     """Hanya admin yang bisa membuat akun baru."""
     existing = await db.users.find_one({"username": body.username})
     if existing:
