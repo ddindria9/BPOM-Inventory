@@ -1132,7 +1132,7 @@ async def shutdown():
     client.close()
 
 app.include_router(api)
-app.add_middleware(
+app.add_middleware( #ini ga kedeteksi dari tadi
     CORSMiddleware,
     allow_origins=[
         "https://bpom-jember-frontend.onrender.com",
