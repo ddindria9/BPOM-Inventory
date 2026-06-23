@@ -1134,8 +1134,11 @@ async def shutdown():
 app.include_router(api)
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "https://bpom-jember-frontend.onrender.com",
+        "http://localhost:3000",  # untuk development lokal
+    ],
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
