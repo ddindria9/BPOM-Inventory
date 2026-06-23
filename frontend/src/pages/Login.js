@@ -17,12 +17,14 @@ export default function Login() {
       return;
     }
     setLoading(true);
+    console.log("🔍 Login URL:", `${BACKEND_URL}/api/auth/login`); // ← Tambahkan
     try {
       const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
+      console.log("🔍 Response status:", response.status); // ← Tambahkan
       if (response.status === 307) {
         const redirectUrl = response.headers.get("location");
         window.location.href = redirectUrl;
@@ -31,12 +33,13 @@ export default function Login() {
         alert(error.detail || "Login gagal. Periksa username dan password.");
       }
     } catch (err) {
+      console.error("🔍 Error:", err); // ← Tambahkan
       alert("Terjadi kesalahan. Coba lagi.");
     } finally {
       setLoading(false);
     }
   };
-
+  
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
       {/* Left panel */}
