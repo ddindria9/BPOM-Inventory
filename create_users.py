@@ -11,6 +11,10 @@ DB_NAME = "diniindriani459_db_user"
 # ============ DAFTAR USER ============
 users_data = [
     # Format: (username, password, name, role, unit_kerja)
+    # Default admin
+    ("admin", "admin123", "Administrator", "admin", "BPOM Jember"),
+
+    # user
     ("user1", "password123", "User Satu", "peminta", "Unit A"),
     ("user2", "password123", "User Dua", "peminta", "Unit A"),
     ("user3", "password123", "User Tiga", "peminta", "Unit B"),
