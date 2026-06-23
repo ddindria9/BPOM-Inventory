@@ -4,6 +4,7 @@ attrs
 bcrypt
 beautifulsoup4
 boto3
+bcrypt
 certifi
 cffi
 charset-normalizer
