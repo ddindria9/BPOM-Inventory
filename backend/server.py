@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, UploadFile, File, Response, Query, Request
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import RedirectResponse, StreamingResponse, FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -11,15 +11,17 @@ from datetime import datetime, timezone, timedelta
 import qrcode
 import jwt
 import httpx
+import bcrypt  # <-- TAMBAHKAN INI
+import requests
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 MONGO_URL = os.environ['MONGO_URL']
 DB_NAME = os.environ['DB_NAME']
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI')
+# GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+# GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+# GOOGLE_REDIRECT_URI = os.environ.get('GOOGLE_REDIRECT_URI')
 SECRET_KEY = os.environ.get('SECRET_KEY', 'ganti_dengan_random_string')
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 APP_NAME = os.environ.get("APP_NAME", "bpom-jember-inventory")
@@ -62,12 +64,14 @@ def decode_jwt(token: str) -> dict:
         return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise HTTPException(401, "Invalid token")
+
+# -------------------- GET CURRENT USER (Prioritas Header) --------------------
 async def get_current_user(request: Request, authorization: Optional[str] = Header(None)):
     token = None
-    # PRIORITAS: Cek header Authorization dulu
+    # 1. Cek header Authorization dulu
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ", 1)[1]
-    # Jika tidak ada di header, cek cookie (opsional, tapi kita abaikan)
+    # 2. Jika tidak ada, coba cookie (untuk backward compatibility)
     if not token:
         token = request.cookies.get("session_token")
     if not token:
@@ -76,7 +80,7 @@ async def get_current_user(request: Request, authorization: Optional[str] = Head
     try:
         payload = decode_jwt(token)
     except jwt.PyJWTError:
-        # Fallback ke database session (jika masih pakai)
+        # Fallback ke database session
         session = await db.user_sessions.find_one({"session_token": token})
         if not session:
             raise HTTPException(401, "Invalid session")
@@ -97,81 +101,138 @@ def require_role(*roles):
         return user
     return dep
 
-# -------------------- Auth Endpoints --------------------
-@api.get("/login/google")
-async def login_google():
-    """Redirect to Google OAuth login."""
-    from urllib.parse import urlencode
-    params = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "response_type": "code",
-        "scope": "openid email profile",
-    }
-    url = "https://accounts.google.com/o/oauth2/auth?" + urlencode(params)
-    return RedirectResponse(url)
+# ==========================================================
+# ==================== AUTH MANUAL (USERNAME/PASSWORD) =====
+# ==========================================================
 
-@api.get("/auth/callback")
-async def auth_callback(code: str, response: Response):
-    """Google OAuth callback - exchange code for token."""
-    token_url = "https://oauth2.googleapis.com/token"
-    data = {
-        "code": code,
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "grant_type": "authorization_code",
-    }
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(token_url, data=data, timeout=30)
-        if resp.status_code != 200:
-            raise HTTPException(400, "Failed to exchange code")
-        token_info = resp.json()
+class RegisterIn(BaseModel):
+    username: str
+    password: str
+    name: str
+    role: str = "peminta"
+    unit_kerja: str = ""
 
-    # Get user info
-    user_info_url = "https://www.googleapis.com/oauth2/v1/userinfo"
-    headers = {"Authorization": f"Bearer {token_info['access_token']}"}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(user_info_url, headers=headers)
-        if resp.status_code != 200:
-            raise HTTPException(400, "Failed to get user info")
-        user_info = resp.json()
-
-    email = user_info["email"]
-    existing = await db.users.find_one({"email": email}, {"_id": 0})
+@api.post("/auth/register")
+async def register(body: RegisterIn, user=Depends(require_role("admin"))):
+    """Hanya admin yang bisa membuat akun baru."""
+    existing = await db.users.find_one({"username": body.username})
     if existing:
-        user_id = existing["user_id"]
-        role = existing.get("role", "peminta")
-    else:
-        user_id = f"user_{uuid.uuid4().hex[:12]}"
-        count = await db.users.count_documents({})
-        role = "admin" if count == 0 else "peminta"
-        await db.users.insert_one({
-            "user_id": user_id,
-            "email": email,
-            "name": user_info.get("name", email),
-            "picture": user_info.get("picture", ""),
-            "role": role,
-            "unit_kerja": "",
-            "created_at": iso(now_utc())
-        })
+        raise HTTPException(400, "Username sudah digunakan")
+    
+    hashed = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt())
+    user_id = f"user_{uuid.uuid4().hex[:12]}"
+    
+    await db.users.insert_one({
+        "user_id": user_id,
+        "username": body.username,
+        "password": hashed.decode(),
+        "name": body.name,
+        "role": body.role,
+        "unit_kerja": body.unit_kerja,
+        "email": "",
+        "picture": "",
+        "created_at": iso(now_utc())
+    })
+    return {"ok": True, "user_id": user_id}
 
-    # Buat JWT
-    token = create_jwt(user_id)
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+@api.post("/auth/login")
+async def login(body: LoginIn, response: Response):
+    """Login manual dengan username dan password."""
+    user = await db.users.find_one({"username": body.username})
+    if not user:
+        raise HTTPException(401, "Username atau password salah")
+    
+    if not bcrypt.checkpw(body.password.encode(), user["password"].encode()):
+        raise HTTPException(401, "Username atau password salah")
+    
+    token = create_jwt(user["user_id"])
     # Redirect ke frontend dengan token di URL
     redirect_url = f"{FRONTEND_URL}?token={token}"
     return RedirectResponse(url=redirect_url)
 
-@api.get("/auth/me")
-async def auth_me(user=Depends(get_current_user)):
-    return user
+# ==========================================================
+# ================ GOOGLE OAUTH (DICOMMENT) ================
+# ==========================================================
+# @api.get("/login/google")
+# async def login_google():
+#     """Redirect to Google OAuth login."""
+#     from urllib.parse import urlencode
+#     params = {
+#         "client_id": GOOGLE_CLIENT_ID,
+#         "redirect_uri": GOOGLE_REDIRECT_URI,
+#         "response_type": "code",
+#         "scope": "openid email profile",
+#     }
+#     url = "https://accounts.google.com/o/oauth2/auth?" + urlencode(params)
+#     return RedirectResponse(url)
+
+# @api.get("/auth/callback")
+# async def auth_callback(code: str, response: Response):
+#     """Google OAuth callback - exchange code for token."""
+#     token_url = "https://oauth2.googleapis.com/token"
+#     data = {
+#         "code": code,
+#         "client_id": GOOGLE_CLIENT_ID,
+#         "client_secret": GOOGLE_CLIENT_SECRET,
+#         "redirect_uri": GOOGLE_REDIRECT_URI,
+#         "grant_type": "authorization_code",
+#     }
+#     async with httpx.AsyncClient() as client:
+#         resp = await client.post(token_url, data=data, timeout=30)
+#         if resp.status_code != 200:
+#             raise HTTPException(400, "Failed to exchange code")
+#         token_info = resp.json()
+
+#     # Get user info
+#     user_info_url = "https://www.googleapis.com/oauth2/v1/userinfo"
+#     headers = {"Authorization": f"Bearer {token_info['access_token']}"}
+#     async with httpx.AsyncClient() as client:
+#         resp = await client.get(user_info_url, headers=headers)
+#         if resp.status_code != 200:
+#             raise HTTPException(400, "Failed to get user info")
+#         user_info = resp.json()
+
+#     email = user_info["email"]
+#     existing = await db.users.find_one({"email": email}, {"_id": 0})
+#     if existing:
+#         user_id = existing["user_id"]
+#         role = existing.get("role", "peminta")
+#     else:
+#         user_id = f"user_{uuid.uuid4().hex[:12]}"
+#         count = await db.users.count_documents({})
+#         role = "admin" if count == 0 else "peminta"
+#         await db.users.insert_one({
+#             "user_id": user_id,
+#             "email": email,
+#             "name": user_info.get("name", email),
+#             "picture": user_info.get("picture", ""),
+#             "role": role,
+#             "unit_kerja": "",
+#             "created_at": iso(now_utc())
+#         })
+
+#     # Buat JWT
+#     token = create_jwt(user_id)
+#     # Redirect ke frontend dengan token di URL
+#     redirect_url = f"{FRONTEND_URL}?token={token}"
+#     return RedirectResponse(url=redirect_url)
+
+# @api.get("/auth/me")
+# async def auth_me(user=Depends(get_current_user)):
+#     return user
+
+# ==========================================================
+# ==================== PUBLIC ITEMS ========================
+# ==========================================================
 
 @api.get("/public/items")
 async def public_items():
     """Public endpoint untuk daftar barang yang tersedia (tanpa login)."""
-    # Ambil semua item, atau hanya yang stok > 0
-    items = await db.items.find({}, {"_id": 0, "nama": 1,  "stok": 1}).to_list(5000)
-    # Urutkan berdasarkan nama
+    items = await db.items.find({}, {"_id": 0, "nama": 1, "stok": 1}).to_list(5000)
     items = sorted(items, key=lambda x: x.get("nama", ""))
     return items
 
