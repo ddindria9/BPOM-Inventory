@@ -36,6 +36,18 @@ db = client[DB_NAME]
 app = FastAPI(title="BPOM Jember Inventory")
 api = APIRouter(prefix="/api")
 
+@api.options("/auth/login")
+async def options_login():
+    return Response(
+        headers={
+            "Access-Control-Allow-Origin": "https://bpom-jember-frontend.onrender.com",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Origin, X-Requested-With",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s - %(message)s')
 log = logging.getLogger("inventory")
 
@@ -1130,6 +1142,18 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
+
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    return Response(
+        headers={
+            "Access-Control-Allow-Origin": "https://bpom-jember-frontend.onrender.com",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, Accept, Origin, X-Requested-With",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "3600",
+        }
+    )
 
 app.include_router(api)
 app.add_middleware(
