@@ -1132,13 +1132,15 @@ async def shutdown():
     client.close()
 
 app.include_router(api)
-app.add_middleware( #ini ga kedeteksi dari tadi
+app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://bpom-jember-frontend.onrender.com",
         "http://localhost:3000",
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    expose_headers=["Content-Type", "Authorization"],
+    max_age=3600,
 )
