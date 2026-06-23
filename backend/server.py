@@ -1136,7 +1136,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://bpom-jember-frontend.onrender.com",
-        "http://localhost:3000",  # untuk development lokal
+        "http://localhost:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
