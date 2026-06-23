@@ -10,7 +10,7 @@ from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 import qrcode
 import jwt
-import httpx
+# import httpx
 import bcrypt  # <-- TAMBAHKAN INI
 import requests
 
@@ -151,6 +151,11 @@ class LoginIn(BaseModel):
     username: str
     password: str
 
+def public_user(user: dict) -> dict:
+    user = clean(dict(user))
+    user.pop("password", None)
+    return user
+
 @api.post("/auth/login")
 async def login(body: LoginIn, response: Response):
     """Login manual dengan username dan password."""
@@ -162,9 +167,19 @@ async def login(body: LoginIn, response: Response):
         raise HTTPException(401, "Username atau password salah")
     
     token = create_jwt(user["user_id"])
-    # Redirect ke frontend dengan token di URL
-    redirect_url = f"{FRONTEND_URL}?token={token}"
-    return RedirectResponse(url=redirect_url)
+    
+    return {
+        "token": token,
+        "user": public_user(user)
+    }
+
+@api.get("/auth/me")
+async def auth_me(user=Depends(get_current_user)):
+    return user
+
+@api.post("/auth/logout")
+async def logout():
+    return {"ok": True}
 
 # ==========================================================
 # ================ GOOGLE OAUTH (DICOMMENT) ================
@@ -232,10 +247,6 @@ async def login(body: LoginIn, response: Response):
 #     # Redirect ke frontend dengan token di URL
 #     redirect_url = f"{FRONTEND_URL}?token={token}"
 #     return RedirectResponse(url=redirect_url)
-
-# @api.get("/auth/me")
-# async def auth_me(user=Depends(get_current_user)):
-#     return user
 
 # ==========================================================
 # ==================== PUBLIC ITEMS ========================
@@ -1136,7 +1147,17 @@ async def startup():
     log.info("Starting up...")
     await db.items.create_index("kode", unique=False)
     await db.movements.create_index("item_id")
-    await db.users.create_index("email", unique=True)
+    await db.users.create_index("username", unique=True)
+    try:
+        await db.users.drop_index("email_1")
+    except Exception:
+        pass
+
+    await db.users.create_index(
+        "email",
+        unique=True,
+        partialFilterExpression={"email": {"$type": "string"}}
+    )
     await db.user_sessions.create_index("session_token", unique=True)
 
 @app.on_event("shutdown")
@@ -1160,6 +1181,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://bpom-jember-frontend.onrender.com",
+        "https://DOMAIN-VERCEL-KAMU.vercel.app",
         "http://localhost:3000",
     ],
     allow_credentials=True,

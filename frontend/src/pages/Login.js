@@ -3,38 +3,41 @@ import { ShieldCheck, ArrowRight } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { BACKEND_URL } from "../lib/api";
+import { api } from "../lib/api";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Login() {
+  const navigate = useNavigate();
+  const { setUser } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleManualLogin = async (e) => {
     e.preventDefault();
+
     if (!username || !password) {
       alert("Username dan password wajib diisi");
       return;
     }
+
     setLoading(true);
-    console.log("🔍 Login URL:", `${BACKEND_URL}/api/auth/login`); // ← Tambahkan
+
     try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+      const { data } = await api.post("/auth/login", {
+        username,
+        password,
       });
-      console.log("🔍 Response status:", response.status); // ← Tambahkan
-      if (response.status === 307) {
-        const redirectUrl = response.headers.get("location");
-        window.location.href = redirectUrl;
-      } else {
-        const error = await response.json();
-        alert(error.detail || "Login gagal. Periksa username dan password.");
-      }
+
+      localStorage.setItem("token", data.token);
+      api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
+
+      setUser(data.user);
+      navigate("/dashboard", { replace: true });
     } catch (err) {
-      console.error("🔍 Error:", err); // ← Tambahkan
-      alert("Terjadi kesalahan. Coba lagi.");
+      console.error("Login error:", err);
+      alert(err.response?.data?.detail || "Login gagal. Periksa username dan password.");
     } finally {
       setLoading(false);
     }
