@@ -50,7 +50,7 @@ export default function Approval() {
               <span className="text-xs text-slate-500">{fmtDate(s.created_at)}</span>
             </div>
             <div className="mt-3">
-              <div className="font-display text-lg">{s.nama_peminta}</div>
+              <div className="font-display text-lg">{s.nama_pegawai}</div>
               <div className="text-sm text-slate-500">{s.unit_kerja}</div>
               {s.keperluan && <div className="text-sm mt-2 text-slate-700">Keperluan: {s.keperluan}</div>}
             </div>
@@ -73,9 +73,11 @@ export default function Approval() {
           <DialogHeader><DialogTitle>Verifikasi {selected?.nomor}</DialogTitle></DialogHeader>
           {selected && (
             <div className="space-y-3">
-              <div className="text-sm"><span className="text-slate-500">Peminta:</span> {selected.nama_peminta} · {selected.unit_kerja}</div>
+              <div className="text-sm"><span className="text-slate-500">pegawai:</span> {selected.nama_pegawai} · {selected.unit_kerja}</div>
               <div className="bg-slate-50 rounded p-3 text-sm space-y-1">
-                {selected.lines.map((l, i) => <div key={i} className="flex justify-between"><span>{nameOf(l.item_id)}</span><span>{l.jumlah}</span></div>)}
+                {selected.lines.map((l, i) => <div key={i} cl
+                                    
+assName="flex justify-between"><span>{nameOf(l.item_id)}</span><span>{l.jumlah}</span></div>)}
               </div>
               <div>
                 <Label>Paraf / Tanda Tangan Digital</Label>
