@@ -523,6 +523,7 @@ class SPBLine(BaseModel):
 
 class SPBIn(BaseModel):
     nama_peminta: str
+    nip_peminta: str = "" 
     unit_kerja: str
     keperluan: str = ""
     lines: List[SPBLine]
@@ -540,6 +541,7 @@ async def create_spb(body: SPBIn):
         "id": f"spb_{uuid.uuid4().hex[:10]}",
         "nomor": nomor,
         "nama_peminta": body.nama_peminta,
+        "nip_peminta": body.nip_peminta,
         "unit_kerja": body.unit_kerja,
         "keperluan": body.keperluan,
         "lines": [l.model_dump() for l in body.lines],
@@ -1052,6 +1054,7 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "nomor_sbbk": spb.get("sbbk_nomor", ""),
         "unit_kerja": spb.get("unit_kerja", ""),
         "nama_peminta": spb.get("nama_peminta", ""),
+        "nip_peminta": spb.get("nip_peminta", ""),
         "nama_penerima": spb.get("nama_peminta", ""),
         "tanggal_permintaan": _fmt_tanggal(spb.get("created_at", "")),
         "tanggal": _fmt_tanggal(spb.get("created_at", "")),
