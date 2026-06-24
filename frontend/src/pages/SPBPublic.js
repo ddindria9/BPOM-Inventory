@@ -11,7 +11,7 @@ const BACKEND_URL = import.meta.env.VITE_API_URL || "https://bpom-inventory.onre
 
 export default function SPBPublic() {
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState({ nama_peminta: "", unit_kerja: "", keperluan: "" });
+  const [form, setForm] = useState({ nama_peminta: "", nip_peminta: "", unit_kerja: "", keperluan: "" });
   const [lines, setLines] = useState([{ item_id: "", jumlah: 1, keperluan: "" }]);
   const [submitted, setSubmitted] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -58,7 +58,7 @@ export default function SPBPublic() {
             data-testid="spb-public-new" 
             onClick={() => { 
               setSubmitted(null); 
-              setForm({ nama_peminta: "", unit_kerja: "", keperluan: "" }); 
+              setForm({ nama_peminta: "", nip_peminta: "", unit_kerja: "", keperluan: "" }); 
               setLines([{ item_id: "", jumlah: 1, keperluan: "" }]); 
             }} 
             className="mt-6 bg-[#1E3A8A]"
@@ -89,6 +89,15 @@ export default function SPBPublic() {
                 data-testid="spb-nama" 
                 value={form.nama_peminta} 
                 onChange={(e) => setForm({ ...form, nama_peminta: e.target.value })} 
+              />
+            </div>
+            <div>
+              <Label>NIP Peminta *</Label>
+              <Input 
+                data-testid="spb-nip" 
+                value={form.nip_peminta} 
+                onChange={(e) => setForm({ ...form, nip_peminta: e.target.value })} 
+                placeholder="Masukkan NIP"
               />
             </div>
             <div>
