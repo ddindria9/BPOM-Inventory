@@ -121,7 +121,7 @@ class RegisterIn(BaseModel):
     username: str
     password: str
     name: str
-    role: str = "peminta"
+    role: str = "pegawai"
     unit_kerja: str = ""
 
 @api.post("/auth/register")
@@ -196,7 +196,7 @@ async def public_items():
     return items
 
 # -------------------- Users --------------------
-ROLES = ["admin_gudang", "peminta", "approver", "pengelola_aset", "admin"]
+ROLES = ["admin_gudang", "pegawai", "approver", "pengelola_aset", "admin"]
 
 class UserUpdate(BaseModel):
     role: Optional[str] = None
@@ -455,8 +455,8 @@ class SPBLine(BaseModel):
     keperluan: str = ""
 
 class SPBIn(BaseModel):
-    nama_peminta: str
-    nip_peminta: str = "" 
+    nama_pegawai: str
+    nip_pegawai: str = "" 
     unit_kerja: str
     keperluan: str = ""
     lines: List[SPBLine]
@@ -473,8 +473,8 @@ async def create_spb(body: SPBIn):
     doc = {
         "id": f"spb_{uuid.uuid4().hex[:10]}",
         "nomor": nomor,
-        "nama_peminta": body.nama_peminta,
-        "nip_peminta": body.nip_peminta,
+        "nama_pegawai": body.nama_pegawai,
+        "nip_pegawai": body.nip_pegawai,
         "unit_kerja": body.unit_kerja,
         "keperluan": body.keperluan,
         "lines": [l.model_dump() for l in body.lines],
@@ -549,7 +549,7 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
                 "nomor": sbbk_nomor,
                 "spb_id": spb_id,
                 "spb_nomor": spb["nomor"],
-                "nama_penerima": spb["nama_peminta"],
+                "nama_penerima": spb["nama_pegawai"],
                 "unit_kerja": spb["unit_kerja"],
                 "lines": spb["lines"],
                 "created_at": iso(now_utc()),
@@ -828,7 +828,7 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
         "unit kerja": "unit_kerja",
         "no. dan tgl. spb": "tanggal_spb",
         "tanggal permintaan": "tanggal_permintaan",
-        "nama peminta": "nama_peminta",
+        "nama pegawai": "nama_pegawai",
         "keperluan": "keperluan",
     }
     for tr in soup.find_all("tr"):
@@ -953,7 +953,7 @@ def _render_template(html_text: str, ctx: dict, rows: list) -> str:
                 elif "pejabat" in lab or "menyetujui" in lab:
                     val = ctx.get("nama_pejabat", "") or ctx.get("approver_name", "")
                 elif "meminta" in lab:
-                    val = ctx.get("nama_peminta", "")
+                    val = ctx.get("nama_pegawai", "")
                 if val and not _txt(cell):
                     new_p = soup.new_tag("p")
                     new_p.string = str(val)
@@ -986,9 +986,9 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "nomor_spb": spb.get("nomor", ""),
         "nomor_sbbk": spb.get("sbbk_nomor", ""),
         "unit_kerja": spb.get("unit_kerja", ""),
-        "nama_peminta": spb.get("nama_peminta", ""),
-        "nip_peminta": spb.get("nip_peminta", ""),
-        "nama_penerima": spb.get("nama_peminta", ""),
+        "nama_pegawai": spb.get("nama_pegawai", ""),
+        "nip_pegawai": spb.get("nip_pegawai", ""),
+        "nama_penerima": spb.get("nama_pegawai", ""),
         "tanggal_permintaan": _fmt_tanggal(spb.get("created_at", "")),
         "tanggal": _fmt_tanggal(spb.get("created_at", "")),
         "tanggal_spb": _fmt_tanggal(spb.get("created_at", "")),
@@ -1002,7 +1002,7 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "approver_paraf": spb.get("approver_paraf", ""),
         "nama_pengelola": "",
         "nip_pengelola": "",
-        "nip_peminta": "",
+        "nip_pegawai": "",
         "nip_pejabat": "",
         "nip_penerima": "",
     }
