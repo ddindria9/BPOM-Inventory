@@ -9,7 +9,7 @@ const ROLES = [
   { v: "admin_gudang", label: "Admin Gudang", color: "bg-blue-100 text-blue-700" },
   { v: "approver", label: "Approver / Pejabat", color: "bg-emerald-100 text-emerald-700" },
   { v: "pengelola_aset", label: "Pengelola Aset", color: "bg-amber-100 text-amber-700" },
-  { v: "peminta", label: "Peminta (Pegawai)", color: "bg-slate-100 text-slate-700" },
+  { v: "pegawai", label: "Pegawai", color: "bg-slate-100 text-slate-700" },
 ];
 
 export default function Users() {
