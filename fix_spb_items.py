@@ -1,7 +1,7 @@
 from pymongo import MongoClient
 
 MONGO_URL = "mongodb+srv://diniindriani459_db_user:YgMKrksbgYPkipaV@cluster0.fu8dak7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0&tlsAllowInvalidCertificates=true"
-DB_NAME = "dinindriani459_db_user"
+DB_NAME = "diniindriani459_db_user"
 
 client = MongoClient(MONGO_URL)
 db = client[DB_NAME]
