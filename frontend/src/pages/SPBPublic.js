@@ -11,7 +11,7 @@ const BACKEND_URL = import.meta.env.VITE_API_URL || "https://bpom-inventory.onre
 
 export default function SPBPublic() {
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState({ nama_peminta: "", nip_peminta: "", unit_kerja: "", keperluan: "" });
+  const [form, setForm] = useState({ nama_pegawai: "", nip_pegawai: "", unit_kerja: "", keperluan: "" });
   const [lines, setLines] = useState([{ item_id: "", jumlah: 1, keperluan: "" }]);
   const [submitted, setSubmitted] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -31,7 +31,7 @@ export default function SPBPublic() {
   }, []);
 
   const submit = async () => {
-    if (!form.nama_peminta || !form.unit_kerja) return toast.error("Nama dan Unit Kerja wajib diisi");
+    if (!form.nama_pegawai || !form.unit_kerja) return toast.error("Nama dan Unit Kerja wajib diisi");
     if (lines.some(l => !l.item_id || !l.jumlah)) return toast.error("Lengkapi daftar barang");
     try {
       const { data } = await axios.post(`${BACKEND_URL}/api/spb`, {
@@ -58,7 +58,7 @@ export default function SPBPublic() {
             data-testid="spb-public-new" 
             onClick={() => { 
               setSubmitted(null); 
-              setForm({ nama_peminta: "", nip_peminta: "", unit_kerja: "", keperluan: "" }); 
+              setForm({ nama_pegawai: "", nip_pegawai: "", unit_kerja: "", keperluan: "" }); 
               setLines([{ item_id: "", jumlah: 1, keperluan: "" }]); 
             }} 
             className="mt-6 bg-[#1E3A8A]"
@@ -84,19 +84,19 @@ export default function SPBPublic() {
         <div className="bg-white border border-slate-200 rounded-lg p-6 sm:p-8">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Label>Nama Peminta *</Label>
+              <Label>Nama Pegawai *</Label>
               <Input 
                 data-testid="spb-nama" 
-                value={form.nama_peminta} 
-                onChange={(e) => setForm({ ...form, nama_peminta: e.target.value })} 
+                value={form.nama_pegawai} 
+                onChange={(e) => setForm({ ...form, nama_pegawai: e.target.value })} 
               />
             </div>
             <div>
-              <Label>NIP Peminta *</Label>
+              <Label>NIP Pegawai *</Label>
               <Input 
                 data-testid="spb-nip" 
-                value={form.nip_peminta} 
-                onChange={(e) => setForm({ ...form, nip_peminta: e.target.value })} 
+                value={form.nip_pegawai} 
+                onChange={(e) => setForm({ ...form, nip_pegawai: e.target.value })} 
                 placeholder="Masukkan NIP"
               />
             </div>
