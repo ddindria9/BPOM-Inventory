@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { api, fmtDate, fmtIDR } from "../lib/api";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function StockCard() {
   const [items, setItems] = useState([]);
@@ -18,6 +21,43 @@ export default function StockCard() {
     return { ...m, sisa: running };
   });
 
+  // ============ EXPORT FUNCTIONS ============
+  const exportToExcel = () => {
+    if (!rows.length) return;
+    const exportData = rows.map(r => ({
+      Tanggal: fmtDate(r.tanggal),
+      Referensi: r.ref,
+      Masuk: r.tipe === "MASUK" ? r.jumlah : "-",
+      Keluar: r.tipe === "KELUAR" ? r.jumlah : "-",
+      Sisa: r.sisa,
+    }));
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Kartu Stok");
+    XLSX.writeFile(wb, `kartu_stok_${data.item.kode}.xlsx`);
+  };
+
+  const exportToPDF = () => {
+    if (!rows.length) return;
+    const doc = new jsPDF();
+    doc.text(`Kartu Stok: ${data.item.nama} (${data.item.kode})`, 14, 20);
+    const tableData = rows.map(r => [
+      fmtDate(r.tanggal),
+      r.ref,
+      r.tipe === "MASUK" ? r.jumlah : "-",
+      r.tipe === "KELUAR" ? r.jumlah : "-",
+      r.sisa,
+    ]);
+    autoTable(doc, {
+      head: [["Tanggal", "Referensi", "Masuk", "Keluar", "Sisa"]],
+      body: tableData,
+      startY: 30,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 58, 138] },
+    });
+    doc.save(`kartu_stok_${data.item.kode}.pdf`);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -27,7 +67,12 @@ export default function StockCard() {
 
       <div className="bg-white border border-slate-200 rounded-lg p-5">
         <label className="text-sm text-slate-600">Pilih Barang</label>
-        <select data-testid="stockcard-select" value={selected} onChange={(e) => setSelected(e.target.value)} className="block mt-1 h-10 w-full sm:w-96 px-3 border border-slate-200 rounded-md text-sm bg-white">
+        <select
+          data-testid="stockcard-select"
+          value={selected}
+          onChange={(e) => setSelected(e.target.value)}
+          className="block mt-1 h-10 w-full sm:w-96 px-3 border border-slate-200 rounded-md text-sm bg-white"
+        >
           <option value="">-- Pilih --</option>
           {items.map(i => <option key={i.id} value={i.id}>{i.kode} · {i.nama}</option>)}
         </select>
@@ -35,16 +80,35 @@ export default function StockCard() {
 
       {data && (
         <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between flex-wrap gap-3">
             <div>
               <div className="font-display text-lg">{data.item.nama}</div>
               <div className="text-xs text-slate-500 font-mono-data">{data.item.kode}</div>
             </div>
-            <div className="text-right">
-              <div className="text-xs text-slate-500 uppercase">Stok Saat Ini</div>
-              <div className="font-display text-2xl">{data.item.stok} {data.item.satuan}</div>
+            <div className="flex items-center gap-6">
+              <div className="text-right">
+                <div className="text-xs text-slate-500 uppercase">Stok Saat Ini</div>
+                <div className="font-display text-2xl">{data.item.stok} {data.item.satuan}</div>
+              </div>
+              {rows.length > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={exportToExcel}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded"
+                  >
+                    📊 Excel
+                  </button>
+                  <button
+                    onClick={exportToPDF}
+                    className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded"
+                  >
+                    📄 PDF
+                  </button>
+                </div>
+              )}
             </div>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-xs uppercase tracking-wider text-slate-500 bg-slate-50">
