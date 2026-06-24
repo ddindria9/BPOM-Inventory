@@ -255,7 +255,10 @@ async def logout():
 @api.get("/public/items")
 async def public_items():
     """Public endpoint untuk daftar barang yang tersedia (tanpa login)."""
-    items = await db.items.find({}, {"_id": 0, "nama": 1, "stok": 1}).to_list(5000)
+    items = await db.items.find(
+        {}, 
+        {"_id": 0, "id": 1, "kode": 1, "nama": 1, "satuan": 1, "stok": 1}
+    ).to_list(5000)
     items = sorted(items, key=lambda x: x.get("nama", ""))
     return items
 
