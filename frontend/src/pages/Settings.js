@@ -13,6 +13,7 @@ const PLACEHOLDERS = [
   { k: "{{tanggal_spb}}", d: "Alias dari tanggal_permintaan (untuk SBBK)" },
   { k: "{{place_date}}", d: "Tempat + tanggal saat ini (Jember, 18 Juni 2026)" },
   { k: "{{nama_peminta}}", d: "Nama orang yang meminta" },
+  { k: "{{nip_peminta}}", d: "NIP orang yang meminta" },
   { k: "{{keperluan}}", d: "Keperluan utama SPB" },
   { k: "{{approver_name}}", d: "Nama pejabat yang menyetujui" },
   { k: "{{approver_paraf}}", d: "Paraf pejabat" },
