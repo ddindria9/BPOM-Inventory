@@ -1143,11 +1143,11 @@ async def startup():
     except Exception:
         pass
 
-    await db.users.create_index(
-        "email",
-        unique=True,
-        partialFilterExpression={"email": {"$type": "string"}}
-    )
+    # await db.users.create_index(
+    #     "email",
+    #     unique=True,
+    #     partialFilterExpression={"email": {"$type": "string"}}
+    # )
     await db.user_sessions.create_index("session_token", unique=True)
 
 @app.on_event("shutdown")
