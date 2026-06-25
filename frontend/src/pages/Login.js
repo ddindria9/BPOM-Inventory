@@ -10,15 +10,15 @@ import { useAuth } from "../contexts/AuthContext";
 export default function Login() {
   const navigate = useNavigate();
   const { setUser } = useAuth();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleManualLogin = async (e) => {
     e.preventDefault();
 
-    if (!username || !password) {
-      alert("Username dan password wajib diisi");
+    if (!email || !password) {
+      alert("email dan password wajib diisi");
       return;
     }
 
@@ -26,7 +26,7 @@ export default function Login() {
 
     try {
       const { data } = await api.post("/auth/login", {
-        username,
+        email,
         password,
       });
 
@@ -37,7 +37,7 @@ export default function Login() {
       navigate("/dashboard", { replace: true });
     } catch (err) {
       console.error("Login error:", err);
-      alert(err.response?.data?.detail || "Login gagal. Periksa username dan password.");
+      alert(err.response?.data?.detail || "Login gagal. Periksa email dan password.");
     } finally {
       setLoading(false);
     }
@@ -68,18 +68,18 @@ export default function Login() {
           <div className="text-sm text-gray-500 mb-2">Akses Terbatas</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Masuk ke sistem</h2>
           <p className="text-gray-500 mb-6">
-            Masukkan username dan password Anda.
+            Masukkan email dan password Anda.
           </p>
 
           <form onSubmit={handleManualLogin} className="space-y-4">
             <div>
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">email</Label>
               <Input
-                id="username"
+                id="email"
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Masukkan username"
+                value={email}
+                onChange={(e) => (e.target.value)}
+                placeholder="Masukkan email"
                 disabled={loading}
               />
             </div>
