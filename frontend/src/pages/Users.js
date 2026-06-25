@@ -18,7 +18,7 @@ export default function Users() {
     nip: "",
     role: "pegawai",
     unit_kerja: "",
-    jabatan: "staff", // <-- tambahkan ini
+    jabatan: "staff",
   });
 
   // Load data
@@ -84,6 +84,16 @@ export default function Users() {
     }
   };
 
+  // Handler saat role berubah
+  const handleRoleChange = (value) => {
+    // Jika role bukan "pegawai", set jabatan ke "staff" dan disable dropdown
+    if (value !== "pegawai") {
+      setNewUser({ ...newUser, role: value, jabatan: "staff" });
+    } else {
+      setNewUser({ ...newUser, role: value });
+    }
+  };
+
   if (loading) {
     return <div className="text-slate-500">Memuat...</div>;
   }
@@ -115,7 +125,7 @@ export default function Users() {
                 <th className="text-left px-4 py-3">Nama</th>
                 <th className="text-left">Username</th>
                 <th className="text-left">Fungsi</th>
-                <th className="text-left">Jabatan</th> {/* <-- tambahkan */}
+                <th className="text-left">Jabatan</th>
                 <th className="text-left">Peran</th>
                 <th className="text-left">Sejak</th>
                 <th className="text-right pr-4">Aksi</th>
@@ -127,7 +137,7 @@ export default function Users() {
                   <td className="px-4 py-2 font-medium">{u.name}</td>
                   <td className="font-mono-data text-xs">{u.username}</td>
                   <td>{u.unit_kerja || "-"}</td>
-                  <td>{u.jabatan || "staff"}</td> {/* <-- tampilkan */}
+                  <td>{u.jabatan || "staff"}</td>
                   <td>
                     <span className="capitalize">{u.role}</span>
                   </td>
@@ -208,21 +218,10 @@ export default function Users() {
               </select>
             </div>
             <div>
-              <Label>Jabatan</Label> {/* <-- tambahkan */}
-              <select
-                value={newUser.jabatan}
-                onChange={(e) => setNewUser({ ...newUser, jabatan: e.target.value })}
-                className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
-              >
-                <option value="staff">Staff</option>
-                <option value="kepala_fungsi">Kepala Fungsi</option>
-              </select>
-            </div>
-            <div>
               <Label>Peran</Label>
               <select
                 value={newUser.role}
-                onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                onChange={(e) => handleRoleChange(e.target.value)}
                 className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
               >
                 <option value="pegawai">Pegawai</option>
@@ -231,6 +230,23 @@ export default function Users() {
                 <option value="pengelola_aset">Pengelola Aset</option>
                 <option value="admin">Admin</option>
               </select>
+            </div>
+            <div>
+              <Label>Jabatan</Label>
+              <select
+                value={newUser.jabatan}
+                onChange={(e) => setNewUser({ ...newUser, jabatan: e.target.value })}
+                className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
+                disabled={newUser.role !== "pegawai"}
+              >
+                <option value="staff">Staff</option>
+                <option value="kepala_fungsi">Kepala Fungsi</option>
+              </select>
+              {newUser.role !== "pegawai" && (
+                <p className="text-xs text-slate-400 mt-1">
+                  * Jabatan hanya dapat diisi untuk role Pegawai
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>
