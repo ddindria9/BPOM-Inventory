@@ -1,10 +1,16 @@
 from pymongo import MongoClient
-import re
 
-MONGO_URL = "mongodb+srv://diniindriani459_db_user:YgMKrksbgYPkipaV@cluster0.fu8dak7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0&tlsAllowInvalidCertificates=true"
-DB_NAME = "diniindriani459_db_user"
+try:
+    client = MongoClient("mongodb+srv://diniindriani459_db_user:YgMKrksbgYPkipaV@cluster0.fu8dak7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0&tlsAllowInvalidCertificates=true")
 
-client = MongoClient(MONGO_URL)
-db = client[DB_NAME]
+    db = client["diniindriani459_db_user"]
+    print("Website berhasil terhubung ke MongoDB!")
+    
+    # PERBAIKAN: Bungkus key dengan tanda kutip
+    result = db.users.update_many({ "role": "peminta" }, { "$set": { "role": "pegawai" } })
+    
+    # Opsional: Menampilkan berapa banyak data yang berhasil diubah
+    print(f"Berhasil mengubah {result.modified_count} data.")
 
-db.users.updateMany({ role: "peminta" }, { $set: { role: "pegawai" } })
+except Exception as e:
+    print("Gagal terhubung atau mengeksekusi perintah:", e)
