@@ -104,10 +104,6 @@ export default function Login() {
             </Button>
           </form>
 
-          <p className="text-xs text-gray-400 mt-6 text-center">
-            Pegawai dapat menggunakan{' '}
-            <a href="/spb-public" className="text-[#1E3A8A] hover:underline">Formulir Permintaan Publik</a>.
-          </p>
         </div>
       </div>
     </div>
