@@ -13,6 +13,7 @@ import jwt
 # import httpx
 import bcrypt  # <-- TAMBAHKAN INI
 import requests
+import base64
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -124,6 +125,7 @@ class RegisterIn(BaseModel):
     nip: str = ""             
     role: str = "pegawai"
     unit_kerja: str = ""
+    jabatan: str = "staff"  # baru
 
 @api.post("/auth/register")
 async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
@@ -143,6 +145,7 @@ async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
         "nip": body.nip,            
         "role": body.role,
         "unit_kerja": body.unit_kerja,
+        "jabatan": body.jabatan,  # tambahkan
         "email": None,
         "picture": "",
         "created_at": iso(now_utc())
@@ -211,6 +214,7 @@ class UserUpdate(BaseModel):
     unit_kerja: Optional[str] = None
     name: Optional[str] = None
     nip: Optional[str] = None   
+    jabatan: Optional[str] = None  # tambahkan
 
 @api.get("/users")
 async def list_users(user=Depends(require_role("admin"))):
@@ -460,13 +464,27 @@ async def list_incoming(user=Depends(get_current_user)):
 # -------------------- SPB Requests --------------------
 class SPBLine(BaseModel):
     item_id: str
-    jumlah: int
+    jumlah: int          # ini adalah permintaan
+    disetujui: Optional[int] = None   # jumlah yang disetujui (diisi saat approval)
+    keterangan: Optional[str] = None  # keterangan dari approval
     keperluan: str = ""
+
+class ApprovalLine(BaseModel):
+    item_id: str
+    disetujui: int
+    keterangan: str = ""
+
+class ApprovalAction(BaseModel):
+    action: str
+    paraf: str = ""
+    alasan: str = ""
+    lines: List[ApprovalLine] = []   # daftar penyesuaian per barang
 
 class SPBIn(BaseModel):
     nama_pegawai: str
     nip_pegawai: str = "" 
     unit_kerja: str
+    jabatan_peminta: str = ""  # tambahkan
     keperluan: str = ""
     lines: List[SPBLine]
 
@@ -485,11 +503,13 @@ async def create_spb(body: SPBIn):
         "nama_pegawai": body.nama_pegawai,
         "nip_pegawai": body.nip_pegawai,
         "unit_kerja": body.unit_kerja,
+        "jabatan_peminta": body.jabatan_peminta,  # tambahkan
         "keperluan": body.keperluan,
         "lines": [l.model_dump() for l in body.lines],
         "status": "PENDING",
         "approver_id": None,
         "approver_name": None,
+        "approver_nip": None,  # tambahkan untuk menyimpan NIP Kepala Fungsi
         "approver_paraf": None,
         "approved_at": None,
         "alasan_tolak": None,
@@ -517,7 +537,6 @@ class ApprovalAction(BaseModel):
     action: str
     paraf: str = ""
     alasan: str = ""
-
 @api.post("/spb/{spb_id}/action")
 async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_role("approver", "admin"))):
     spb = await db.spb.find_one({"id": spb_id}, {"_id": 0})
@@ -526,12 +545,34 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
     if spb["status"] != "PENDING":
         raise HTTPException(400, "SPB already processed")
     if body.action == "APPROVE":
-        for l in spb["lines"]:
-            it = await db.items.find_one({"id": l["item_id"]}, {"_id": 0})
-            if not it:
-                raise HTTPException(400, f"Barang tidak ditemukan: {l['item_id']}")
-            if it.get("stok", 0) < l["jumlah"]:
-                raise HTTPException(400, f"Stok tidak cukup untuk {it['nama']} (tersedia {it.get('stok', 0)}, diminta {l['jumlah']})")
+        # Validasi jabatan
+        if user.get("jabatan") != "kepala_fungsi":
+            raise HTTPException(403, "Hanya Kepala Fungsi yang dapat menyetujui")
+        # Generate QR Code dari NIP Kepala Fungsi
+        qr_data = f"{FRONTEND_URL}/approval/{spb_id}?nip={user.get('nip')}"
+        qr_img = qrcode.make(qr_data)
+        qr_buffer = io.BytesIO()
+        qr_img.save(qr_buffer, format="PNG")
+        qr_base64 = base64.b64encode(qr_buffer.getvalue()).decode()
+        
+        # Simpan QR ke SPB
+        await db.spb.update_one(
+            {"id": spb_id},
+            {"$set": {"approver_qr": qr_base64}}
+        )
+        # Update setiap line dengan disetujui dan keterangan
+        for line_update in body.lines:
+            for idx, line in enumerate(spb["lines"]):
+                if line["item_id"] == line_update.item_id:
+                    # Set disetujui dan keterangan
+                    spb["lines"][idx]["disetujui"] = line_update.disetujui
+                    spb["lines"][idx]["keterangan"] = line_update.keterangan
+                    break
+        
+        # Simpan perubahan ke database (sebelum melanjutkan)
+        await db.spb.update_one(
+            {"id": spb_id},
+            {"$set": {"lines": spb["lines"]}}
         sbbk_count = await db.sbbk.count_documents({})
         sbbk_nomor = gen_nomor_surat("SBBK", sbbk_count + 1)
         applied_items = []
@@ -979,11 +1020,10 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
             "kode": it.get("kode", ""),
             "nama": it.get("nama", l["item_id"]),
             "satuan": it.get("satuan", ""),
-            "jumlah": l["jumlah"],
-            "permintaan": l["jumlah"],
-            "disetujui": l["jumlah"],
+            "permintaan": l["jumlah"],                     # jumlah yang diminta
+            "disetujui": l.get("disetujui", l["jumlah"]),  # jumlah yang disetujui (default = permintaan)
+            "keterangan": l.get("keterangan", ""),         # keterangan dari approval
             "keperluan": l.get("keperluan", "") or spb.get("keperluan", ""),
-            "keterangan": "",
             "harga": it.get("harga", 0),
         })
     today = now_utc()
@@ -1014,6 +1054,9 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "nip_pegawai": "",
         "nip_pejabat": "",
         "nip_penerima": "",
+        "nama_kepala_fungsi": spb.get("approver_name", ""),
+        "nip_kepala_fungsi": spb.get("approver_nip", ""),
+        "approver_qr": spb.get("approver_qr", ""),  # QR code dalam base64
     }
     return ctx, rows
 
