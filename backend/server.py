@@ -140,6 +140,7 @@ async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
         "username": body.username,
         "password": hashed.decode(),
         "name": body.name,
+        "nip": body.nip,            
         "role": body.role,
         "unit_kerja": body.unit_kerja,
         "email": None,
@@ -196,6 +197,14 @@ async def public_items():
     items = sorted(items, key=lambda x: x.get("nama", ""))
     return items
 
+@api.get("/fungsi")
+async def list_fungsi():
+    """Daftar semua Fungsi (unit_kerja) yang sudah ada di database."""
+    fungsi = await db.users.distinct("unit_kerja")
+    # filter None atau string kosong
+    fungsi = [f for f in fungsi if f and f.strip()]
+    return sorted(fungsi)
+
 # -------------------- Users --------------------
 ROLES = ["admin_gudang", "pegawai", "approver", "pengelola_aset", "admin"]
 
@@ -203,6 +212,7 @@ class UserUpdate(BaseModel):
     role: Optional[str] = None
     unit_kerja: Optional[str] = None
     name: Optional[str] = None
+    nip: Optional[str] = None   
 
 @api.get("/users")
 async def list_users(user=Depends(require_role("admin"))):
