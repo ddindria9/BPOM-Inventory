@@ -121,6 +121,7 @@ class RegisterIn(BaseModel):
     username: str
     password: str
     name: str
+    nip: str = ""             
     role: str = "pegawai"
     unit_kerja: str = ""
 
