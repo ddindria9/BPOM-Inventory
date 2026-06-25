@@ -15,7 +15,7 @@ export default function Users() {
   // Modal tambah user
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUser, setNewUser] = useState({
-    username: "",
+    : "",
     password: "",
     name: "",
     nip: "",
@@ -62,8 +62,8 @@ export default function Users() {
 
   // Tambah user
   const handleAddUser = async () => {
-    if (!newUser.username || !newUser.password || !newUser.name) {
-      toast.error("Username, password, dan nama wajib diisi");
+    if (!newUser.email || !newUser.password || !newUser.name) {
+      toast.error("email, password, dan nama wajib diisi");
       return;
     }
     try {
@@ -71,7 +71,7 @@ export default function Users() {
       toast.success("User berhasil ditambahkan");
       setShowAddModal(false);
       setNewUser({
-        username: "",
+        email: "",
         password: "",
         name: "",
         nip: "",
@@ -167,7 +167,7 @@ export default function Users() {
             <thead className="text-xs uppercase tracking-wider text-slate-500 bg-slate-50">
               <tr>
                 <th className="text-left px-4 py-3">Nama</th>
-                <th className="text-left">Username</th>
+                <th className="text-left">email</th>
                 <th className="text-left">Fungsi</th>
                 <th className="text-left">Jabatan</th>
                 <th className="text-left">Peran</th>
@@ -179,7 +179,7 @@ export default function Users() {
               {users.map((u) => (
                 <tr key={u.user_id} className="border-t border-slate-100">
                   <td className="px-4 py-2 font-medium">{u.name}</td>
-                  <td className="font-mono-data text-xs">{u.username}</td>
+                  <td className="font-mono-data text-xs">{u.email}</td>
                   <td>{u.unit_kerja || "-"}</td>
                   <td>{u.jabatan || "staff"}</td>
                   <td>
@@ -230,11 +230,11 @@ export default function Users() {
           </DialogHeader>
           <div className="space-y-3 py-3">
             <div>
-              <Label>Username *</Label>
+              <Label>email *</Label>
               <Input
-                value={newUser.username}
-                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                placeholder="Username"
+                value={newUser.email}
+                onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                placeholder="email"
               />
             </div>
             <div>
@@ -336,7 +336,7 @@ export default function Users() {
           </DialogHeader>
           {viewUser && (
             <div className="space-y-3 py-3">
-              <div><Label>Username</Label><div className="font-medium">{viewUser.username}</div></div>
+              <div><Label>email</Label><div className="font-medium">{viewUser.email}</div></div>
               <div><Label>Nama Lengkap</Label><div className="font-medium">{viewUser.name}</div></div>
               <div><Label>NIP</Label><div className="font-medium">{viewUser.nip || "-"}</div></div>
               <div><Label>Fungsi</Label><div className="font-medium">{viewUser.unit_kerja || "-"}</div></div>
@@ -362,8 +362,8 @@ export default function Users() {
           {editUser && (
             <div className="space-y-3 py-3">
               <div>
-                <Label>Username (tidak dapat diubah)</Label>
-                <div className="font-medium text-slate-600">{editUser.username}</div>
+                <Label>email (tidak dapat diubah)</Label>
+                <div className="font-medium text-slate-600">{editUser.email}</div>
               </div>
               <div>
                 <Label>Nama Lengkap *</Label>
