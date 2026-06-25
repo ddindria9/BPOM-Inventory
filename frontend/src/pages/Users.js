@@ -17,6 +17,42 @@ export default function Users() {
   const [list, setList] = useState([]);
   const [err, setErr] = useState("");
 
+// Di dalam Users.js, tambahkan state dan form
+const [fungsiList, setFungsiList] = useState([]);
+const [showAddModal, setShowAddModal] = useState(false);
+const [newUser, setNewUser] = useState({
+  username: "",
+  password: "",
+  name: "",
+  nip: "",
+  role: "pegawai",
+  unit_kerja: "",
+});
+
+useEffect(() => {
+  api.get("/fungsi").then(r => setFungsiList(r.data));
+}, []);
+
+const handleAddUser = async () => {
+  try {
+    await api.post("/auth/register", newUser);
+    toast.success("User berhasil dibuat");
+    setShowAddModal(false);
+    loadUsers(); // refresh daftar user
+  } catch (e) {
+    toast.error(e?.response?.data?.detail || "Gagal membuat user");
+  }
+};
+
+// Di form, untuk Fungsi gunakan dropdown:
+<select
+  value={newUser.unit_kerja}
+  onChange={(e) => setNewUser({...newUser, unit_kerja: e.target.value})}
+>
+  <option value="">-- Pilih Fungsi --</option>
+  {fungsiList.map(f => <option key={f} value={f}>{f}</option>)}
+</select>
+
   const load = async () => {
     try { const { data } = await api.get("/users"); setList(data); }
     catch (e) { setErr(e?.response?.data?.detail || "Tidak dapat memuat data pengguna"); }
@@ -57,7 +93,7 @@ export default function Users() {
               <tr>
                 <th className="text-left px-4 py-3">Nama</th>
                 <th className="text-left">Email</th>
-                <th className="text-left">Unit Kerja</th>
+                <th className="text-left">Fungsi</th>
                 <th className="text-left">Peran</th>
                 <th className="text-left">Sejak</th>
                 <th></th>
