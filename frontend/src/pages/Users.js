@@ -1,125 +1,228 @@
 import React, { useEffect, useState } from "react";
 import { api, fmtDate } from "../lib/api";
+import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { toast } from "sonner";
-import { useAuth } from "../contexts/AuthContext";
-
-const ROLES = [
-  { v: "admin", label: "Administrator", color: "bg-purple-100 text-purple-700" },
-  { v: "admin_gudang", label: "Admin Gudang", color: "bg-blue-100 text-blue-700" },
-  { v: "approver", label: "Approver / Pejabat", color: "bg-emerald-100 text-emerald-700" },
-  { v: "pengelola_aset", label: "Pengelola Aset", color: "bg-amber-100 text-amber-700" },
-  { v: "pegawai", label: "Pegawai", color: "bg-slate-100 text-slate-700" },
-];
 
 export default function Users() {
-  const { user: me } = useAuth();
-  const [list, setList] = useState([]);
-  const [err, setErr] = useState("");
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [fungsiList, setFungsiList] = useState([]);
+  const [showModal, setShowModal] = useState(false);
+  const [newUser, setNewUser] = useState({
+    username: "",
+    password: "",
+    name: "",
+    nip: "",
+    role: "pegawai",
+    unit_kerja: "",
+  });
 
-// Di dalam Users.js, tambahkan state dan form
-const [fungsiList, setFungsiList] = useState([]);
-const [showAddModal, setShowAddModal] = useState(false);
-const [newUser, setNewUser] = useState({
-  username: "",
-  password: "",
-  name: "",
-  nip: "",
-  role: "pegawai",
-  unit_kerja: "",
-});
+  // Load data
+  const loadUsers = async () => {
+    try {
+      const { data } = await api.get("/users");
+      setUsers(data);
+    } catch (e) {
+      toast.error("Gagal memuat daftar pengguna");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-useEffect(() => {
-  api.get("/fungsi").then(r => setFungsiList(r.data));
-}, []);
+  const loadFungsi = async () => {
+    try {
+      const { data } = await api.get("/fungsi");
+      setFungsiList(data);
+    } catch (e) {
+      // Fallback hardcode jika endpoint gagal
+      setFungsiList(["Pemeriksaan", "Penindakan", "Infokom", "Tata Usaha", "Pengujian"]);
+    }
+  };
 
-const handleAddUser = async () => {
-  try {
-    await api.post("/auth/register", newUser);
-    toast.success("User berhasil dibuat");
-    setShowAddModal(false);
-    loadUsers(); // refresh daftar user
-  } catch (e) {
-    toast.error(e?.response?.data?.detail || "Gagal membuat user");
+  useEffect(() => {
+    loadUsers();
+    loadFungsi();
+  }, []);
+
+  // Tambah user
+  const handleAddUser = async () => {
+    if (!newUser.username || !newUser.password || !newUser.name) {
+      toast.error("Username, password, dan nama wajib diisi");
+      return;
+    }
+    try {
+      await api.post("/auth/register", newUser);
+      toast.success("User berhasil ditambahkan");
+      setShowModal(false);
+      setNewUser({ username: "", password: "", name: "", nip: "", role: "pegawai", unit_kerja: "" });
+      loadUsers();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Gagal menambahkan user");
+    }
+  };
+
+  // Hapus user
+  const handleDelete = async (userId) => {
+    if (!window.confirm("Yakin ingin menghapus user ini?")) return;
+    try {
+      await api.delete(`/users/${userId}`);
+      toast.success("User dihapus");
+      loadUsers();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Gagal menghapus user");
+    }
+  };
+
+  if (loading) {
+    return <div className="text-slate-500">Memuat...</div>;
   }
-};
-
-// Di form, untuk Fungsi gunakan dropdown:
-<select
-  value={newUser.unit_kerja}
-  onChange={(e) => setNewUser({...newUser, unit_kerja: e.target.value})}
->
-  <option value="">-- Pilih Fungsi --</option>
-  {fungsiList.map(f => <option key={f} value={f}>{f}</option>)}
-</select>
-
-  const load = async () => {
-    try { const { data } = await api.get("/users"); setList(data); }
-    catch (e) { setErr(e?.response?.data?.detail || "Tidak dapat memuat data pengguna"); }
-  };
-  useEffect(() => { load(); }, []);
-
-  const updateRole = async (u, role) => {
-    try { await api.patch(`/users/${u.user_id}`, { role }); toast.success(`Peran ${u.name} diubah`); load(); }
-    catch { toast.error("Gagal mengubah peran"); }
-  };
-  const updateUnit = async (u, unit_kerja) => {
-    try { await api.patch(`/users/${u.user_id}`, { unit_kerja }); }
-    catch {}
-  };
-  const remove = async (u) => {
-    if (!window.confirm(`Hapus ${u.name}?`)) return;
-    try { await api.delete(`/users/${u.user_id}`); load(); } catch (e) { toast.error(e?.response?.data?.detail || "Gagal hapus"); }
-  };
-
-  if (err) return (
-    <div className="bg-amber-50 border border-amber-200 rounded p-4 text-amber-800 text-sm">
-      {err} - Hanya Administrator yang dapat mengelola pengguna.
-    </div>
-  );
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Modul 11</div>
-        <h1 className="font-display text-3xl mt-1">Manajemen Pengguna</h1>
-        <div className="text-sm text-slate-500 mt-1">Atur hak akses sesuai pemisahan tugas SPIP / PIPK.</div>
+      <div className="flex items-end justify-between flex-wrap gap-4">
+        <div>
+          <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Modul 8</div>
+          <h1 className="font-display text-3xl mt-1">Manajemen Pengguna</h1>
+          <div className="text-sm text-slate-500 mt-1">
+            Atur hak akses sesuai pemisahan tugas SPIP / PIPK.
+          </div>
+        </div>
+        <Button
+          onClick={() => setShowModal(true)}
+          className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"
+        >
+          + Tambah User
+        </Button>
       </div>
 
+      {/* Tabel User */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-xs uppercase tracking-wider text-slate-600">
+            <thead className="text-xs uppercase tracking-wider text-slate-500 bg-slate-50">
               <tr>
                 <th className="text-left px-4 py-3">Nama</th>
-                <th className="text-left">Email</th>
+                <th className="text-left">Username</th>
                 <th className="text-left">Fungsi</th>
                 <th className="text-left">Peran</th>
                 <th className="text-left">Sejak</th>
-                <th></th>
+                <th className="text-right pr-4">Aksi</th>
               </tr>
             </thead>
             <tbody>
-              {list.map((u) => (
+              {users.map((u) => (
                 <tr key={u.user_id} className="border-t border-slate-100">
-                  <td className="px-4 py-3">{u.name}{u.user_id === me?.user_id && <span className="ml-2 text-[10px] uppercase tracking-wider bg-slate-100 px-2 py-0.5 rounded">Anda</span>}</td>
-                  <td className="text-slate-500">{u.email}</td>
-                  <td><Input defaultValue={u.unit_kerja || ""} onBlur={(e) => updateUnit(u, e.target.value)} className="h-8 text-xs" /></td>
+                  <td className="px-4 py-2 font-medium">{u.name}</td>
+                  <td className="font-mono-data text-xs">{u.username}</td>
+                  <td>{u.unit_kerja || "-"}</td>
                   <td>
-                    <select data-testid={`user-role-${u.email}`} value={u.role} onChange={(e) => updateRole(u, e.target.value)} className="h-8 px-2 border border-slate-200 rounded text-xs">
-                      {ROLES.map(r => <option key={r.v} value={r.v}>{r.label}</option>)}
-                    </select>
+                    <span className="capitalize">{u.role}</span>
                   </td>
-                  <td className="text-slate-500 text-xs">{fmtDate(u.created_at)}</td>
-                  <td className="pr-4 text-right">
-                    {u.user_id !== me?.user_id && <button onClick={() => remove(u)} className="text-red-600 text-xs hover:underline">Hapus</button>}
+                  <td>{fmtDate(u.created_at)}</td>
+                  <td className="text-right pr-4">
+                    <button
+                      onClick={() => handleDelete(u.user_id)}
+                      className="text-red-600 hover:underline text-xs"
+                    >
+                      Hapus
+                    </button>
                   </td>
                 </tr>
               ))}
+              {users.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-slate-400">
+                    Belum ada pengguna.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Modal Tambah User */}
+      <Dialog open={showModal} onOpenChange={setShowModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Tambah Pengguna Baru</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-3">
+            <div>
+              <Label>Username *</Label>
+              <Input
+                value={newUser.username}
+                onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                placeholder="Username"
+              />
+            </div>
+            <div>
+              <Label>Password *</Label>
+              <Input
+                type="password"
+                value={newUser.password}
+                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                placeholder="Password"
+              />
+            </div>
+            <div>
+              <Label>Nama Lengkap *</Label>
+              <Input
+                value={newUser.name}
+                onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                placeholder="Nama lengkap"
+              />
+            </div>
+            <div>
+              <Label>NIP</Label>
+              <Input
+                value={newUser.nip}
+                onChange={(e) => setNewUser({ ...newUser, nip: e.target.value })}
+                placeholder="NIP (opsional)"
+              />
+            </div>
+            <div>
+              <Label>Fungsi</Label>
+              <select
+                value={newUser.unit_kerja}
+                onChange={(e) => setNewUser({ ...newUser, unit_kerja: e.target.value })}
+                className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
+              >
+                <option value="">-- Pilih Fungsi --</option>
+                {fungsiList.map((f) => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Peran</Label>
+              <select
+                value={newUser.role}
+                onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
+              >
+                <option value="pegawai">Pegawai</option>
+                <option value="admin_gudang">Admin Gudang</option>
+                <option value="approver">Approver</option>
+                <option value="pengelola_aset">Pengelola Aset</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowModal(false)}>
+              Batal
+            </Button>
+            <Button onClick={handleAddUser} className="bg-[#1E3A8A]">
+              Tambah
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
