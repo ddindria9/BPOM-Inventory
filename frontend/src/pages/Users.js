@@ -4,7 +4,6 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { toast } from "sonner";
 
 export default function Users() {
@@ -19,6 +18,7 @@ export default function Users() {
     nip: "",
     role: "pegawai",
     unit_kerja: "",
+    jabatan: "staff", // <-- tambahkan ini
   });
 
   // Load data
@@ -38,7 +38,6 @@ export default function Users() {
       const { data } = await api.get("/fungsi");
       setFungsiList(data);
     } catch (e) {
-      // Fallback hardcode jika endpoint gagal
       setFungsiList(["Pemeriksaan", "Penindakan", "Infokom", "Tata Usaha", "Pengujian"]);
     }
   };
@@ -58,7 +57,15 @@ export default function Users() {
       await api.post("/auth/register", newUser);
       toast.success("User berhasil ditambahkan");
       setShowModal(false);
-      setNewUser({ username: "", password: "", name: "", nip: "", role: "pegawai", unit_kerja: "" });
+      setNewUser({
+        username: "",
+        password: "",
+        name: "",
+        nip: "",
+        role: "pegawai",
+        unit_kerja: "",
+        jabatan: "staff",
+      });
       loadUsers();
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Gagal menambahkan user");
@@ -108,6 +115,7 @@ export default function Users() {
                 <th className="text-left px-4 py-3">Nama</th>
                 <th className="text-left">Username</th>
                 <th className="text-left">Fungsi</th>
+                <th className="text-left">Jabatan</th> {/* <-- tambahkan */}
                 <th className="text-left">Peran</th>
                 <th className="text-left">Sejak</th>
                 <th className="text-right pr-4">Aksi</th>
@@ -119,6 +127,7 @@ export default function Users() {
                   <td className="px-4 py-2 font-medium">{u.name}</td>
                   <td className="font-mono-data text-xs">{u.username}</td>
                   <td>{u.unit_kerja || "-"}</td>
+                  <td>{u.jabatan || "staff"}</td> {/* <-- tampilkan */}
                   <td>
                     <span className="capitalize">{u.role}</span>
                   </td>
@@ -135,7 +144,7 @@ export default function Users() {
               ))}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-6 text-center text-slate-400">
+                  <td colSpan={7} className="p-6 text-center text-slate-400">
                     Belum ada pengguna.
                   </td>
                 </tr>
@@ -196,6 +205,17 @@ export default function Users() {
                 {fungsiList.map((f) => (
                   <option key={f} value={f}>{f}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <Label>Jabatan</Label> {/* <-- tambahkan */}
+              <select
+                value={newUser.jabatan}
+                onChange={(e) => setNewUser({ ...newUser, jabatan: e.target.value })}
+                className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
+              >
+                <option value="staff">Staff</option>
+                <option value="kepala_fungsi">Kepala Fungsi</option>
               </select>
             </div>
             <div>
