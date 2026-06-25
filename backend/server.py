@@ -533,10 +533,6 @@ async def get_spb(spb_id: str):
         raise HTTPException(404, "SPB not found")
     return doc
 
-class ApprovalAction(BaseModel):
-    action: str
-    paraf: str = ""
-    alasan: str = ""
 @api.post("/spb/{spb_id}/action")
 async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_role("approver", "admin"))):
     spb = await db.spb.find_one({"id": spb_id}, {"_id": 0})
@@ -573,6 +569,7 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
         await db.spb.update_one(
             {"id": spb_id},
             {"$set": {"lines": spb["lines"]}}
+        )
         sbbk_count = await db.sbbk.count_documents({})
         sbbk_nomor = gen_nomor_surat("SBBK", sbbk_count + 1)
         applied_items = []
@@ -580,7 +577,8 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
         sbbk_id = f"sbbk_{uuid.uuid4().hex[:10]}"
         try:
             for l in spb["lines"]:
-                await db.items.update_one({"id": l["item_id"]}, {"$inc": {"stok": -l["jumlah"]}})
+                qty = l.get("disetujui", l["jumlah"])  # gunakan disetujui jika ada
+                await db.items.update_one({"id": l["item_id"]}, {"$inc": {"stok": -qty}})
                 applied_items.append((l["item_id"], l["jumlah"]))
                 mv_id = f"mv_{uuid.uuid4().hex[:10]}"
                 await db.movements.insert_one({
@@ -609,6 +607,7 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_rol
                 "status": "APPROVED",
                 "approver_id": user["user_id"],
                 "approver_name": user["name"],
+                "approver_nip": user.get("nip", ""),  # tambahkan ini
                 "approver_paraf": body.paraf,
                 "approved_at": iso(now_utc()),
                 "sbbk_nomor": sbbk_nomor,
@@ -1172,7 +1171,6 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://bpom-jember-frontend.onrender.com",
-        "https://DOMAIN-VERCEL-KAMU.vercel.app",
         "http://localhost:3000",
     ],
     allow_credentials=True,
