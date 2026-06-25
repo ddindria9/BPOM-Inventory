@@ -114,7 +114,7 @@ export default function SPBPublic() {
               />
             </div>
             <div>
-              <Label>Unit Kerja *</Label>
+              <Label>Fungsi *</Label>
               <Input 
                 data-testid="spb-unit" 
                 value={form.unit_kerja} 
