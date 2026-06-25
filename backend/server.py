@@ -115,11 +115,11 @@ def require_role(*roles):
     return dep
 
 # ==========================================================
-# ==================== AUTH MANUAL (USERNAME/PASSWORD) =====
+# ==================== AUTH MANUAL (email/PASSWORD) =====
 # ==========================================================
 
 class RegisterIn(BaseModel):
-    username: str
+    email: str
     password: str
     name: str
     nip: str = ""             
@@ -130,16 +130,16 @@ class RegisterIn(BaseModel):
 @api.post("/auth/register")
 async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
     """Hanya admin yang bisa membuat akun baru."""
-    existing = await db.users.find_one({"username": body.username})
+    existing = await db.users.find_one({"email": body.email})
     if existing:
-        raise HTTPException(400, "Username sudah digunakan")
+        raise HTTPException(400, "email sudah digunakan")
     
     hashed = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt())
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     
     await db.users.insert_one({
         "user_id": user_id,
-        "username": body.username,
+        "email": body.email,
         "password": hashed.decode(),
         "name": body.name,
         "nip": body.nip,            
@@ -153,7 +153,7 @@ async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
     return {"ok": True, "user_id": user_id}
 
 class LoginIn(BaseModel):
-    username: str
+    email: str
     password: str
 
 def public_user(user: dict) -> dict:
@@ -163,13 +163,13 @@ def public_user(user: dict) -> dict:
 
 @api.post("/auth/login")
 async def login(body: LoginIn, response: Response):
-    """Login manual dengan username dan password."""
-    user = await db.users.find_one({"username": body.username})
+    """Login manual dengan email dan password."""
+    user = await db.users.find_one({"email": body.email})
     if not user:
-        raise HTTPException(401, "Username atau password salah")
+        raise HTTPException(401, "email atau password salah")
     
     if not bcrypt.checkpw(body.password.encode(), user["password"].encode()):
-        raise HTTPException(401, "Username atau password salah")
+        raise HTTPException(401, "email atau password salah")
     
     token = create_jwt(user["user_id"])
     
@@ -1137,7 +1137,7 @@ async def startup():
     log.info("Starting up...")
     await db.items.create_index("kode", unique=False)
     await db.movements.create_index("item_id")
-    await db.users.create_index("username", unique=True)
+    await db.users.create_index("email", unique=True)
     try:
         await db.users.drop_index("email_1")
     except Exception:
