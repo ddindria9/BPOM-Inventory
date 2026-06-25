@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -10,38 +12,49 @@ import { toast } from "sonner";
 const BACKEND_URL = import.meta.env.VITE_API_URL || "https://bpom-inventory.onrender.com";
 
 export default function SPBPublic() {
+  const { user, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
+
   const [items, setItems] = useState([]);
-  const [form, setForm] = useState({ nama_pegawai: "", nip_pegawai: "", unit_kerja: "", keperluan: "" });
   const [lines, setLines] = useState([{ item_id: "", jumlah: 1, keperluan: "" }]);
   const [submitted, setSubmitted] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Jika belum login, redirect ke login
   useEffect(() => {
-    // Ambil daftar barang dari endpoint publik
+    if (!authLoading && !user) {
+      navigate("/login");
+    }
+  }, [authLoading, user, navigate]);
+
+  // Ambil daftar barang
+  useEffect(() => {
     setLoading(true);
     axios.get(`${BACKEND_URL}/api/public/items`)
-      .then(res => {
-        setItems(res.data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setItems([]);
-        setLoading(false);
-      });
+      .then(res => { setItems(res.data); setLoading(false); })
+      .catch(() => { setItems([]); setLoading(false); });
   }, []);
 
   const submit = async () => {
-    if (!form.nama_pegawai || !form.unit_kerja) return toast.error("Nama dan Unit Kerja wajib diisi");
-    if (lines.some(l => !l.item_id || !l.jumlah)) return toast.error("Lengkapi daftar barang");
+    if (lines.some(l => !l.item_id || !l.jumlah)) {
+      return toast.error("Lengkapi daftar barang");
+    }
     try {
       const { data } = await axios.post(`${BACKEND_URL}/api/spb`, {
-        ...form,
-        lines: lines.map(l => ({ item_id: l.item_id, jumlah: Number(l.jumlah), keperluan: l.keperluan })),
+        nama_peminta: user.name,
+        nip_peminta: user.nip || "",
+        unit_kerja: user.unit_kerja || "",
+        keperluan: "",
+        lines: lines.map(l => ({
+          item_id: l.item_id,
+          jumlah: Number(l.jumlah),
+          keperluan: l.keperluan
+        })),
       });
       setSubmitted(data);
       toast.success("Permintaan terkirim");
-    } catch (e) { 
-      toast.error(e?.response?.data?.detail || "Gagal mengirim permintaan"); 
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Gagal mengirim permintaan");
     }
   };
 
