@@ -14,24 +14,71 @@ export default function Approval() {
   const [selected, setSelected] = useState(null);
   const [paraf, setParaf] = useState("");
   const [alasan, setAlasan] = useState("");
+  // State untuk line adjustments (disetujui & keterangan)
+  const [lineAdjustments, setLineAdjustments] = useState({});
 
   const load = async () => {
-    const [s, i] = await Promise.all([api.get("/spb", { params: { status: "PENDING" } }), api.get("/items")]);
-    setPending(s.data); setItems(i.data);
+    const [s, i] = await Promise.all([
+      api.get("/spb", { params: { status: "PENDING" } }),
+      api.get("/items")
+    ]);
+    setPending(s.data);
+    setItems(i.data);
   };
   useEffect(() => { load(); }, []);
 
   const nameOf = (id) => items.find(x => x.id === id)?.nama || id;
 
+  // Ketika memilih SPB, inisialisasi lineAdjustments dengan nilai default
+  const handleSelect = (spb) => {
+    setSelected(spb);
+    const adjustments = {};
+    spb.lines.forEach((l, idx) => {
+      adjustments[idx] = {
+        item_id: l.item_id,
+        disetujui: l.jumlah, // default = jumlah yang diminta
+        keterangan: l.keterangan || ""
+      };
+    });
+    setLineAdjustments(adjustments);
+  };
+
+  const handleAdjustmentChange = (idx, field, value) => {
+    setLineAdjustments(prev => ({
+      ...prev,
+      [idx]: { ...prev[idx], [field]: value }
+    }));
+  };
+
   const act = async (action) => {
     if (!selected) return;
     if (action === "APPROVE" && !paraf) return toast.error("Isi paraf/tanda tangan digital");
     if (action === "REJECT" && !alasan) return toast.error("Isi alasan penolakan");
+
     try {
-      await api.post(`/spb/${selected.id}/action`, { action, paraf, alasan });
+      // Siapkan data lines
+      const linesData = Object.values(lineAdjustments).map(l => ({
+        item_id: l.item_id,
+        disetujui: Number(l.disetujui),
+        keterangan: l.keterangan || ""
+      }));
+
+      await api.post(`/spb/${selected.id}/action`, {
+        action,
+        paraf,
+        alasan,
+        lines: linesData
+      });
+
       toast.success(action === "APPROVE" ? "Disetujui & SBBK dibuat" : "Permintaan ditolak");
-      setSelected(null); setParaf(""); setAlasan(""); load();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Gagal"); }
+      setSelected(null);
+      setParaf("");
+      setAlasan("");
+      setLineAdjustments({});
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Gagal");
+    }
   };
 
   return (
@@ -44,7 +91,11 @@ export default function Approval() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {pending.map((s) => (
-          <div key={s.id} data-testid={`approval-card-${s.nomor}`} className="bg-white border border-slate-200 rounded-lg p-5 hover:-translate-y-0.5 transition-transform">
+          <div
+            key={s.id}
+            data-testid={`approval-card-${s.nomor}`}
+            className="bg-white border border-slate-200 rounded-lg p-5 hover:-translate-y-0.5 transition-transform"
+          >
             <div className="flex items-center justify-between">
               <div className="font-mono-data text-sm">{s.nomor}</div>
               <span className="text-xs text-slate-500">{fmtDate(s.created_at)}</span>
@@ -62,36 +113,102 @@ export default function Approval() {
                 </div>
               ))}
             </div>
-            <Button data-testid={`approval-open-${s.nomor}`} onClick={() => setSelected(s)} className="w-full mt-4 bg-[#1E3A8A] hover:bg-[#1E2A6B]">Tinjau</Button>
+            <Button
+              data-testid={`approval-open-${s.nomor}`}
+              onClick={() => handleSelect(s)}
+              className="w-full mt-4 bg-[#1E3A8A] hover:bg-[#1E2A6B]"
+            >
+              Tinjau
+            </Button>
           </div>
         ))}
-        {pending.length === 0 && <div className="lg:col-span-2 text-center text-slate-400 py-12 bg-white border border-slate-200 rounded-lg">Tidak ada permintaan menunggu.</div>}
+        {pending.length === 0 && (
+          <div className="lg:col-span-2 text-center text-slate-400 py-12 bg-white border border-slate-200 rounded-lg">
+            Tidak ada permintaan menunggu.
+          </div>
+        )}
       </div>
 
       <Dialog open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Verifikasi {selected?.nomor}</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Verifikasi {selected?.nomor}</DialogTitle>
+          </DialogHeader>
           {selected && (
-            <div className="space-y-3">
-              <div className="text-sm"><span className="text-slate-500">pegawai:</span> {selected.nama_pegawai} · {selected.unit_kerja}</div>
-              <div className="bg-slate-50 rounded p-3 text-sm space-y-1">
-                {selected.lines.map((l, i) => <div key={i} cl
-                                    
-assName="flex justify-between"><span>{nameOf(l.item_id)}</span><span>{l.jumlah}</span></div>)}
+            <div className="space-y-4">
+              <div className="text-sm">
+                <span className="text-slate-500">Pegawai:</span> {selected.nama_pegawai} · {selected.unit_kerja}
               </div>
+
+              {/* Daftar barang dengan kolom disetujui dan keterangan */}
+              <div className="bg-slate-50 rounded p-3">
+                <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  <div className="col-span-4">Nama Barang</div>
+                  <div className="col-span-2 text-right">Diminta</div>
+                  <div className="col-span-2 text-right">Disetujui</div>
+                  <div className="col-span-4">Keterangan</div>
+                </div>
+                {selected.lines.map((l, idx) => (
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center mb-2">
+                    <div className="col-span-4 text-sm">{nameOf(l.item_id)}</div>
+                    <div className="col-span-2 text-right text-sm font-semibold">{l.jumlah}</div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        value={lineAdjustments[idx]?.disetujui ?? l.jumlah}
+                        onChange={(e) => handleAdjustmentChange(idx, 'disetujui', e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <Input
+                        type="text"
+                        placeholder="Keterangan (opsional)"
+                        value={lineAdjustments[idx]?.keterangan || ""}
+                        onChange={(e) => handleAdjustmentChange(idx, 'keterangan', e.target.value)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
               <div>
                 <Label>Paraf / Tanda Tangan Digital</Label>
-                <Input data-testid="approval-paraf" value={paraf} onChange={(e) => setParaf(e.target.value)} placeholder="Inisial / nama lengkap..." />
+                <Input
+                  data-testid="approval-paraf"
+                  value={paraf}
+                  onChange={(e) => setParaf(e.target.value)}
+                  placeholder="Inisial / nama lengkap..."
+                />
               </div>
               <div>
                 <Label>Alasan (jika menolak)</Label>
-                <Textarea value={alasan} onChange={(e) => setAlasan(e.target.value)} rows={2} />
+                <Textarea
+                  value={alasan}
+                  onChange={(e) => setAlasan(e.target.value)}
+                  rows={2}
+                />
               </div>
             </div>
           )}
           <DialogFooter className="gap-2">
-            <Button data-testid="approval-reject" variant="outline" onClick={() => act("REJECT")} className="border-red-300 text-red-700"><XCircle className="w-4 h-4 mr-1" />Tolak</Button>
-            <Button data-testid="approval-approve" onClick={() => act("APPROVE")} className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"><CheckCircle2 className="w-4 h-4 mr-1" />Setujui</Button>
+            <Button
+              data-testid="approval-reject"
+              variant="outline"
+              onClick={() => act("REJECT")}
+              className="border-red-300 text-red-700"
+            >
+              <XCircle className="w-4 h-4 mr-1" />Tolak
+            </Button>
+            <Button
+              data-testid="approval-approve"
+              onClick={() => act("APPROVE")}
+              className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"
+            >
+              <CheckCircle2 className="w-4 h-4 mr-1" />Setujui
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
