@@ -36,7 +36,7 @@ export default function SPBList() {
                 <th className="text-left px-4 py-3">Nomor SPB</th>
                 <th className="text-left">Tanggal</th>
                 <th className="text-left">Peminta</th>
-                <th className="text-left">Unit Kerja</th>
+                <th className="text-left">Fungsi</th>
                 <th className="text-right">Item</th>
                 <th className="text-left">Status</th>
                 <th className="text-right pr-4">Surat</th>
