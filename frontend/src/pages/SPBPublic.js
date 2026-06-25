@@ -5,7 +5,6 @@ import { useAuth } from "../contexts/AuthContext";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Textarea } from "../components/ui/textarea";
 import { Plus, Trash2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -19,21 +18,29 @@ export default function SPBPublic() {
   const [lines, setLines] = useState([{ item_id: "", jumlah: 1, keperluan: "" }]);
   const [submitted, setSubmitted] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [keperluan, setKeperluan] = useState("");
 
-  // Jika belum login, redirect ke login
+  // Redirect ke login jika belum login
   useEffect(() => {
     if (!authLoading && !user) {
       navigate("/login");
     }
   }, [authLoading, user, navigate]);
 
-  // Ambil daftar barang
+  // Ambil daftar barang (hanya jika user sudah login)
   useEffect(() => {
+    if (!user) return;
     setLoading(true);
     axios.get(`${BACKEND_URL}/api/public/items`)
-      .then(res => { setItems(res.data); setLoading(false); })
-      .catch(() => { setItems([]); setLoading(false); });
-  }, []);
+      .then(res => {
+        setItems(res.data);
+        setLoading(false);
+      })
+      .catch(() => {
+        setItems([]);
+        setLoading(false);
+      });
+  }, [user]);
 
   const submit = async () => {
     if (lines.some(l => !l.item_id || !l.jumlah)) {
@@ -44,7 +51,7 @@ export default function SPBPublic() {
         nama_peminta: user.name,
         nip_peminta: user.nip || "",
         unit_kerja: user.unit_kerja || "",
-        keperluan: "",
+        keperluan: keperluan,
         lines: lines.map(l => ({
           item_id: l.item_id,
           jumlah: Number(l.jumlah),
@@ -57,6 +64,14 @@ export default function SPBPublic() {
       toast.error(e?.response?.data?.detail || "Gagal mengirim permintaan");
     }
   };
+
+  if (authLoading) {
+    return <div className="min-h-screen bg-slate-50 grid place-items-center">Memuat...</div>;
+  }
+
+  if (!user) {
+    return <div className="min-h-screen bg-slate-50 grid place-items-center">Redirecting...</div>;
+  }
 
   if (submitted) {
     return (
@@ -71,8 +86,8 @@ export default function SPBPublic() {
             data-testid="spb-public-new" 
             onClick={() => { 
               setSubmitted(null); 
-              setForm({ nama_pegawai: "", nip_pegawai: "", unit_kerja: "", keperluan: "" }); 
-              setLines([{ item_id: "", jumlah: 1, keperluan: "" }]); 
+              setLines([{ item_id: "", jumlah: 1, keperluan: "" }]);
+              setKeperluan("");
             }} 
             className="mt-6 bg-[#1E3A8A]"
           >
@@ -95,53 +110,41 @@ export default function SPBPublic() {
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-6 sm:p-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Informasi Peminta (auto-fill) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 p-3 bg-slate-50 rounded">
             <div>
-              <Label>Nama Pegawai *</Label>
-              <Input 
-                data-testid="spb-nama" 
-                value={form.nama_pegawai} 
-                onChange={(e) => setForm({ ...form, nama_pegawai: e.target.value })} 
-              />
+              <Label className="text-xs text-slate-500">Nama Pegawai</Label>
+              <div className="font-medium">{user.name}</div>
             </div>
             <div>
-              <Label>NIP Pegawai *</Label>
-              <Input 
-                data-testid="spb-nip" 
-                value={form.nip_pegawai} 
-                onChange={(e) => setForm({ ...form, nip_pegawai: e.target.value })} 
-                placeholder="Masukkan NIP"
-              />
+              <Label className="text-xs text-slate-500">NIP</Label>
+              <div className="font-medium">{user.nip || '-'}</div>
             </div>
             <div>
-              <Label>Fungsi *</Label>
-              <Input 
-                data-testid="spb-unit" 
-                value={form.unit_kerja} 
-                onChange={(e) => setForm({ ...form, unit_kerja: e.target.value })} 
-              />
+              <Label className="text-xs text-slate-500">Fungsi</Label>
+              <div className="font-medium">{user.unit_kerja || '-'}</div>
             </div>
           </div>
+
           <div className="mt-3">
             <Label>Keperluan Umum</Label>
-            <Textarea 
-              value={form.keperluan} 
-              onChange={(e) => setForm({ ...form, keperluan: e.target.value })} 
+            <textarea 
+              value={keperluan} 
+              onChange={(e) => setKeperluan(e.target.value)} 
               rows={2} 
+              className="w-full border border-slate-200 rounded-md px-3 py-2 text-sm"
             />
           </div>
 
           <div className="mt-5">
             <div className="text-xs uppercase tracking-wider text-slate-500 mb-2">Daftar Barang yang Diminta</div>
             
-            {/* Pesan loading */}
             {loading && (
               <div className="text-sm text-slate-500 bg-slate-50 border border-slate-200 rounded p-3 mb-3">
                 ⏳ Memuat daftar barang...
               </div>
             )}
             
-            {/* Pesan jika data kosong */}
             {!loading && items.length === 0 && (
               <div className="text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded p-3 mb-3">
                 ⚠️ Belum ada data barang. Hubungi admin gudang untuk mengisi master barang terlebih dahulu.
