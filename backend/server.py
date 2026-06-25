@@ -199,11 +199,9 @@ async def public_items():
 
 @api.get("/fungsi")
 async def list_fungsi():
-    """Daftar semua Fungsi (unit_kerja) yang sudah ada di database."""
-    fungsi = await db.users.distinct("unit_kerja")
-    # filter None atau string kosong
-    fungsi = [f for f in fungsi if f and f.strip()]
-    return sorted(fungsi)
+    """Daftar fungsi yang tersedia."""
+    # Nilai tetap sesuai permintaan
+    return ["Pemeriksaan", "Penindakan", "Infokom", "Tata Usaha", "Pengujian"]
 
 # -------------------- Users --------------------
 ROLES = ["admin_gudang", "pegawai", "approver", "pengelola_aset", "admin"]
