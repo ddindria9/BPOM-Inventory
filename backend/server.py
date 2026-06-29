@@ -520,25 +520,50 @@ class SPBIn(BaseModel):
     lines: List[SPBLine]
 
 def gen_nomor_surat(prefix: str, seq: int):
-    bulan_romawi = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]
     now = now_utc()
-    return f"{seq:04d}/{prefix}/{bulan_romawi[now.month]}/{now.year}"
+    NAMA_BULAN_ID = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"]
+    return f"{seq:04d}/{prefix}/{NAMA_BULAN_ID[now.month-1]}/{now.year}"
 
 @api.post("/spb")
 async def create_spb(body: SPBIn):
+    # 1. Ambil semua item_id dari lines
+    item_ids = [l.item_id for l in body.lines]
+    
+    # 2. Query ke database untuk mendapatkan kategori setiap item
+    items = await db.items.find({"id": {"$in": item_ids}}, {"_id": 0, "id": 1, "kategori": 1}).to_list(100)
+    if len(items) != len(item_ids):
+        missing = [iid for iid in item_ids if iid not in [it["id"] for it in items]]
+        raise HTTPException(400, f"Barang tidak ditemukan: {', '.join(missing)}")
+    
+    # 3. Tentukan kategori dominan (semua item harus satu kategori)
+    categories = set(it.get("kategori", "").strip().upper() for it in items)
+    # Kategori kosong dianggap "PSD" (default)
+    categories = {c if c else "PSD" for c in categories}
+    
+    if len(categories) > 1:
+        raise HTTPException(400, "Semua barang dalam satu pengajuan harus memiliki kategori yang sama (ATK atau non-ATK).")
+    
+    kategori = categories.pop()
+    # 4. Tentukan prefix surat: ATK jika kategori "ATK", selain itu "PSD"
+    prefix = "ATK" if kategori == "ATK" else "PSD"
+    
+    # 5. Buat nomor surat
     count = await db.spb.count_documents({})
-    nomor = gen_nomor_surat("PSD", count + 1)
+    nomor = gen_nomor_surat(prefix, count + 1)
+    
+    # 6. Simpan SPB dengan prefix surat
     doc = {
         "id": f"spb_{uuid.uuid4().hex[:10]}",
         "nomor": nomor,
+        "prefix_surat": prefix,  # simpan prefix untuk keperluan lain
+        "kategori_surat": kategori,
         "nama_pegawai": body.nama_pegawai,
         "nip_pegawai": body.nip_pegawai,
         "unit_kerja": body.unit_kerja,
-        "jabatan": body.jabatan,
+        "jabatan_peminta": body.jabatan_peminta,
         "keperluan": body.keperluan,
         "lines": [l.model_dump() for l in body.lines],
         "status": "PENDING",
-        # Kepala Fungsi
         "kf_approver_id": None,
         "kf_approver_name": None,
         "kf_approver_nip": None,
@@ -546,7 +571,6 @@ async def create_spb(body: SPBIn):
         "kf_approver_paraf": None,
         "kf_approved_at": None,
         "qr_kf": None,
-        # Approver Final
         "approver_id": None,
         "approver_name": None,
         "approver_nip": None,
@@ -560,7 +584,6 @@ async def create_spb(body: SPBIn):
     }
     await db.spb.insert_one(doc)
     return clean(doc)
-
 @api.get("/spb")
 async def list_spb(status: Optional[str] = None, user=Depends(get_current_user)):
     q = {}
