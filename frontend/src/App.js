@@ -59,10 +59,10 @@ function AppRouter() {
       <Route path="/stock-card" element={<Protected><StockCard /></Protected>} />
       <Route path="/assets" element={<Protected><Assets /></Protected>} />
       <Route path="/reports" element={<Protected><Reports /></Protected>} />
+      <Route path="/perencanaan" element={<Layout><Perencanaan /></Layout>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
-      <Route path="/perencanaan" element={<Perencanaan />} />
-
+        
       {/* Optional fallback */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
