@@ -86,6 +86,7 @@ export default function Reports() {
                   <th className="py-2 px-2 text-left w-12">No</th>
                   <th className="py-2 px-2 text-left">Kode</th>
                   <th className="py-2 px-2 text-left">Nama Barang</th>
+                  <th className="py-2 px-2 text-left">Lokasi</th>
                   <th className="py-2 px-2 text-right">Stok Sistem</th>
                   <th className="py-2 px-2 text-right">Stok Fisik</th>
                   <th className="py-2 px-2 text-right">Selisih</th>
@@ -97,12 +98,13 @@ export default function Reports() {
                     <td className="py-2 px-2">{i + 1}</td>
                     <td className="py-2 px-2 font-mono-data text-xs">{it.kode}</td>
                     <td className="py-2 px-2">{it.nama}</td>
+                    <td className="py-2 px-2">{it.lokasi || "-"}</td>
                     <td className="py-2 px-2 text-right">{it.stok}</td>
                     <td className="py-2 px-2 text-right">_____</td>
                     <td className="py-2 px-2 text-right">_____</td>
                   </tr>
                 ))}
-                {items.length === 0 && <tr><td colSpan={6} className="p-6 text-center text-slate-400">Tidak ada data.</td></tr>}
+                {items.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-slate-400">Tidak ada data.</td></tr>}
               </tbody>
             </table>
           </>
