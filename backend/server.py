@@ -513,7 +513,7 @@ class SPBIn(BaseModel):
     nama_pegawai: str
     nip_pegawai: str = "" 
     unit_kerja: str
-    jabatan: str = ""   # staff / kepala_fungsi
+    jabatan: str = "staff"   default
     keperluan: str = ""
     lines: List[SPBLine]
 
