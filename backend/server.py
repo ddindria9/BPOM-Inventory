@@ -515,7 +515,7 @@ class SPBIn(BaseModel):
     nama_pegawai: str
     nip_pegawai: str = "" 
     unit_kerja: str
-    jabatan: str = "staff"  
+    jabatan: str = "staff"   # staff / kepala_fungsi / kepala_bpom
     keperluan: str = ""
     lines: List[SPBLine]
 
@@ -537,33 +537,47 @@ async def create_spb(body: SPBIn):
     
     # 3. Tentukan kategori dominan (semua item harus satu kategori)
     categories = set(it.get("kategori", "").strip().upper() for it in items)
-    # Kategori kosong dianggap "PSD" (default)
     categories = {c if c else "PSD" for c in categories}
     
     if len(categories) > 1:
         raise HTTPException(400, "Semua barang dalam satu pengajuan harus memiliki kategori yang sama (ATK atau non-ATK).")
     
     kategori = categories.pop()
-    # 4. Tentukan prefix surat: ATK jika kategori "ATK", selain itu "PSD"
     prefix = "ATK" if kategori == "ATK" else "PSD"
     
-    # 5. Buat nomor surat
+    # 4. Buat nomor surat
     count = await db.spb.count_documents({})
     nomor = gen_nomor_surat(prefix, count + 1)
     
-    # 6. Simpan SPB dengan prefix surat
+    # 5. Cari admin gudang (ambil satu, misal yang pertama)
+    admin_gudang = await db.users.find_one({"role": "admin_gudang"})
+    admin_gudang_id = admin_gudang.get("user_id") if admin_gudang else None
+    admin_gudang_name = admin_gudang.get("name") if admin_gudang else ""
+    admin_gudang_nip = admin_gudang.get("nip") if admin_gudang else ""
+    admin_gudang_qr = ""
+    if admin_gudang_nip:
+        qr_data = f"{FRONTEND_URL}/approval?nip={admin_gudang_nip}"
+        admin_gudang_qr = _generate_qr_with_logo(qr_data)
+    
+    # 6. Simpan SPB
     doc = {
         "id": f"spb_{uuid.uuid4().hex[:10]}",
         "nomor": nomor,
-        "prefix_surat": prefix,  # simpan prefix untuk keperluan lain
+        "prefix_surat": prefix,
         "kategori_surat": kategori,
         "nama_pegawai": body.nama_pegawai,
         "nip_pegawai": body.nip_pegawai,
         "unit_kerja": body.unit_kerja,
-        "jabatan_peminta": body.jabatan_peminta,
+        "jabatan": body.jabatan,
         "keperluan": body.keperluan,
         "lines": [l.model_dump() for l in body.lines],
         "status": "PENDING",
+        # Admin Gudang
+        "admin_gudang_id": admin_gudang_id,
+        "admin_gudang_name": admin_gudang_name,
+        "admin_gudang_nip": admin_gudang_nip,
+        "admin_gudang_qr": admin_gudang_qr,
+        # Kepala Fungsi
         "kf_approver_id": None,
         "kf_approver_name": None,
         "kf_approver_nip": None,
@@ -571,6 +585,7 @@ async def create_spb(body: SPBIn):
         "kf_approver_paraf": None,
         "kf_approved_at": None,
         "qr_kf": None,
+        # Approver Final
         "approver_id": None,
         "approver_name": None,
         "approver_nip": None,
@@ -584,6 +599,7 @@ async def create_spb(body: SPBIn):
     }
     await db.spb.insert_one(doc)
     return clean(doc)
+
 @api.get("/spb")
 async def list_spb(status: Optional[str] = None, user=Depends(get_current_user)):
     q = {}
@@ -606,14 +622,12 @@ def _generate_qr_with_logo(data: str) -> str:
     from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
     from PIL import Image, ImageDraw, ImageFont
     import io
-    import base64
 
     qr = qrcode.QRCode(box_size=6, border=2)
     qr.add_data(data)
     qr.make(fit=True)
     img = qr.make_image(image_factory=StyledPilImage, module_drawer=RoundedModuleDrawer())
 
-    # Buat logo BPOM (lingkaran biru dengan teks)
     logo = Image.new("RGBA", (80, 80), (255, 255, 255, 0))
     draw = ImageDraw.Draw(logo)
     draw.ellipse((0, 0, 80, 80), fill=(30, 58, 138, 255), outline=(255, 255, 255, 5))
@@ -688,8 +702,22 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(get_current
             applied_items = []
             inserted_movements = []
             sbbk_id = f"sbbk_{uuid.uuid4().hex[:10]}"
+            
+            # Ambil admin_gudang dari SPB
+            admin_gudang_name = spb.get("admin_gudang_name", "")
+            admin_gudang_nip = spb.get("admin_gudang_nip", "")
+            admin_gudang_qr = spb.get("admin_gudang_qr", "")
+            
+            # QR Penerima (dari pegawai pengaju)
+            penerima_qr = ""
+            if spb.get("nip_pegawai"):
+                penerima_qr = _generate_qr_with_logo(f"{FRONTEND_URL}/penerima/{spb['nip_pegawai']}")
+            
+            # Saring lines yang disetujui (> 0)
+            sbbk_lines = [l for l in spb["lines"] if l.get("disetujui", 0) > 0]
+            
             try:
-                for l in spb["lines"]:
+                for l in sbbk_lines:
                     qty = l.get("disetujui", l["jumlah"])
                     if qty > 0:
                         await db.items.update_one({"id": l["item_id"]}, {"$inc": {"stok": -qty}})
@@ -706,17 +734,24 @@ async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(get_current
                             "created_at": iso(now_utc()),
                         })
                         inserted_movements.append(mv_id)
+                
                 sbbk = {
                     "id": sbbk_id,
                     "nomor": sbbk_nomor,
                     "spb_id": spb_id,
                     "spb_nomor": spb["nomor"],
                     "nama_penerima": spb["nama_pegawai"],
+                    "nip_penerima": spb["nip_pegawai"],
                     "unit_kerja": spb["unit_kerja"],
-                    "lines": spb["lines"],
+                    "lines": sbbk_lines,  # hanya yang disetujui
+                    "admin_gudang_name": admin_gudang_name,
+                    "admin_gudang_nip": admin_gudang_nip,
+                    "admin_gudang_qr": admin_gudang_qr,
+                    "penerima_qr": penerima_qr,
                     "created_at": iso(now_utc()),
                 }
                 await db.sbbk.insert_one(sbbk)
+                
                 await db.spb.update_one({"id": spb_id}, {"$set": {
                     "status": "APPROVED",
                     "approver_id": user["user_id"],
@@ -1239,14 +1274,14 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "approver_jabatan": spb.get("approver_jabatan", ""),
         "approver_paraf": spb.get("approver_paraf", ""),
         "qr_approver": spb.get("qr_approver", ""),
-        # fallback (kompatibilitas lama)
-        "nama_pejabat": spb.get("approver_name", "") or spb.get("kf_approver_name", ""),
-        "nip_pejabat": spb.get("approver_nip", "") or spb.get("kf_approver_nip", ""),
-        "approver_paraf": spb.get("approver_paraf", "") or spb.get("kf_approver_paraf", ""),
-        "nama_penerima": spb.get("nama_pegawai", ""),
-        "nip_penerima": spb.get("nip_pegawai", ""),
-        "nama_pengelola": "",
-        "nip_pengelola": "",
+        # Admin Gudang
+        "admin_gudang_name": spb.get("admin_gudang_name", ""),
+        "admin_gudang_nip": spb.get("admin_gudang_nip", ""),
+        "admin_gudang_qr": spb.get("admin_gudang_qr", ""),
+        # Penerima (untuk SBBK)
+        "penerima_name": spb.get("nama_pegawai", ""),
+        "penerima_nip": spb.get("nip_pegawai", ""),
+        "penerima_qr": spb.get("penerima_qr", ""), 
     }
     return ctx, rows
     
