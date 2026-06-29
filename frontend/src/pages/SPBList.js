@@ -35,7 +35,7 @@ export default function SPBList() {
               <tr>
                 <th className="text-left px-4 py-3">Nomor SPB</th>
                 <th className="text-left">Tanggal</th>
-                <th className="text-left">Peminta</th>
+                <th className="text-left">Pegawai</th>
                 <th className="text-left">Fungsi</th>
                 <th className="text-right">Item</th>
                 <th className="text-left">Status</th>
@@ -47,7 +47,7 @@ export default function SPBList() {
                 <tr key={d.id} className="border-t border-slate-100">
                   <td className="px-4 py-3 font-mono-data text-xs">{d.nomor}</td>
                   <td>{fmtDate(d.created_at)}</td>
-                  <td>{d.nama_peminta}</td>
+                  <td>{d.nama_Pegawai}</td>
                   <td>{d.unit_kerja}</td>
                   <td className="text-right">{d.lines?.length}</td>
                   <td>
