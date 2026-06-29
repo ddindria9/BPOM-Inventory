@@ -129,7 +129,7 @@ class TestSPB:
     def test_public_spb_submission(self, anon_client, base_url):
         item_id = getattr(pytest, "created_item_id", None)
         payload = {
-            "nama_peminta": "Budi Public",
+            "nama_pegawai": "Budi Public",
             "unit_kerja": "Lab Mikro",
             "keperluan": "Kebutuhan Lab",
             "lines": [{"item_id": item_id, "jumlah": 2, "keperluan": "uji sampel"}],
@@ -171,7 +171,7 @@ class TestSPB:
         item_id = pytest.created_item_id
         # Submit a huge SPB
         payload = {
-            "nama_peminta": "Greedy",
+            "nama_pegawai": "Greedy",
             "unit_kerja": "U",
             "lines": [{"item_id": item_id, "jumlah": 999999, "keperluan": "x"}],
         }
@@ -187,7 +187,7 @@ class TestSPB:
         spb = anon_client.post(
             f"{base_url}/api/spb",
             json={
-                "nama_peminta": "TolakUser",
+                "nama_pegawai": "TolakUser",
                 "unit_kerja": "U",
                 "lines": [{"item_id": item_id, "jumlah": 1, "keperluan": "x"}],
             },
@@ -301,7 +301,7 @@ class TestUsers:
         target = next((u for u in pytest.users_list if u["user_id"] != me["user_id"]), None)
         if not target:
             pytest.skip("Need another user")
-        original_role = target.get("role", "peminta")
+        original_role = target.get("role", "pegawai")
         r = admin_client.patch(
             f"{base_url}/api/users/{target['user_id']}",
             json={"role": "approver"},
