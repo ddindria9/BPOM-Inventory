@@ -20,6 +20,7 @@ import Users from "./pages/Users";
 import SPBList from "./pages/SPBList";
 import Settings from "./pages/Settings";
 import Layout from "./components/Layout";
+import Perencanaan from "./pages/Perencanaan";
 
 function Protected({ children }) {
   const { user, loading } = useAuth();
@@ -60,6 +61,7 @@ function AppRouter() {
       <Route path="/reports" element={<Protected><Reports /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
+      <Route path="/perencanaan" element={<Perencanaan />} />
 
       {/* Optional fallback */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
