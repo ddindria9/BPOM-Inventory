@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api, fmtIDR } from "../lib/api";
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
-import { AlertTriangle, Package, Box, Wallet, Clock, Inbox } from "lucide-react";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import { AlertTriangle, Box, Wallet, Clock, Inbox } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -9,7 +9,7 @@ import { toast } from "sonner";
 const COLORS = { BAIK: "#1E3A8A", RUSAK_RINGAN: "#F59E0B", RUSAK_BERAT: "#DC2626" };
 
 function Stat({ icon: Icon, label, value, accent, testid }) {
-  // Pastikan value tidak undefined/null, tampilkan 0 sebagai fallback
+  // Pastikan value adalah number atau string, bukan objek
   const displayValue = (value === undefined || value === null) ? 0 : value;
   return (
     <div data-testid={testid} className="rise-in bg-white border border-slate-200 rounded-lg p-5 hover:-translate-y-0.5 transition-transform">
@@ -22,36 +22,51 @@ function Stat({ icon: Icon, label, value, accent, testid }) {
   );
 }
 
+// Komponen pembungkus chart dengan ErrorBoundary sederhana
+class ChartErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    if (this.state.hasError) {
+      return <div className="text-sm text-red-500 p-4">Gagal menampilkan chart. Periksa data.</div>;
+    }
+    return this.props.children;
+  }
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null);
 
   const load = async () => {
     try {
       const { data } = await api.get("/dashboard/stats");
-      // Pastikan data memiliki properti yang diharapkan dengan fallback
+      // Normalisasi data dengan fallback yang aman
       setStats({
-        ...data,
-        kondisi_counts: data.kondisi_counts || {},
+        total_items: data.total_items ?? 0,
+        low_stock_count: data.low_stock_count ?? 0,
+        pending_spb: data.pending_spb ?? 0,
+        total_nilai: data.total_nilai ?? 0,
+        total_assets: data.total_assets ?? 0,
+        kondisi_counts: data.kondisi_counts && typeof data.kondisi_counts === 'object' ? data.kondisi_counts : {},
         low_stock_items: Array.isArray(data.low_stock_items) ? data.low_stock_items : [],
         expiring: Array.isArray(data.expiring) ? data.expiring : [],
-        total_items: data.total_items || 0,
-        low_stock_count: data.low_stock_count || 0,
-        pending_spb: data.pending_spb || 0,
-        total_nilai: data.total_nilai || 0,
-        total_assets: data.total_assets || 0,
       });
     } catch (e) {
       toast.error("Gagal memuat dashboard");
-      // Set state dengan data kosong agar tidak crash
       setStats({
-        kondisi_counts: {},
-        low_stock_items: [],
-        expiring: [],
         total_items: 0,
         low_stock_count: 0,
         pending_spb: 0,
         total_nilai: 0,
         total_assets: 0,
+        kondisi_counts: {},
+        low_stock_items: [],
+        expiring: [],
       });
     }
   };
@@ -65,10 +80,10 @@ export default function Dashboard() {
 
   if (!stats) return <div className="text-slate-500">Memuat...</div>;
 
-  // Data untuk pie chart – aman karena sudah fallback {}
+  // Data pie chart – aman karena sudah fallback
   const kondisiData = Object.entries(stats.kondisi_counts).map(([k, v]) => ({
     name: k.replace("_", " "),
-    value: v,
+    value: typeof v === 'number' ? v : 0,
     key: k
   }));
   const totalAssets = kondisiData.reduce((s, x) => s + x.value, 0);
@@ -124,23 +139,25 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Asset condition pie */}
+        {/* Asset condition pie - dengan ErrorBoundary dan ResponsiveContainer yang dipastikan ukurannya */}
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           <h3 className="font-display text-lg">Kondisi Aset</h3>
           <div className="text-xs text-slate-500">Total {totalAssets} aset</div>
-          <div className="h-52 mt-4" style={{ width: '100%' }}>  {/* ← pastikan lebar 100% */}
+          <div style={{ width: '100%', height: 250, minHeight: 200 }} className="mt-4">
             {totalAssets === 0 ? (
               <div className="h-full grid place-items-center text-sm text-slate-400">Belum ada data aset</div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={kondisiData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={2}>
-                    {kondisiData.map((e, i) => <Cell key={i} fill={COLORS[e.key]} />)}
-                  </Pie>
-                  <Tooltip />
-                  <Legend iconType="circle" />
-                </PieChart>
-              </ResponsiveContainer>
+              <ChartErrorBoundary>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={kondisiData} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75} paddingAngle={2}>
+                      {kondisiData.map((e, i) => <Cell key={i} fill={COLORS[e.key] || '#999'} />)}
+                    </Pie>
+                    <Tooltip />
+                    <Legend iconType="circle" />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartErrorBoundary>
             )}
           </div>
         </div>
