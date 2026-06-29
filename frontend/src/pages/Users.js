@@ -36,19 +36,16 @@ export default function Users() {
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
-  const { data } = await api.get("/users");
-  console.log("📦 Data users:", data);
-  setUsers(Array.isArray(data) ? data : []);
+
+  // ----- LOAD DATA (sudah benar dengan async/await) -----
   const loadUsers = async () => {
     try {
       const { data } = await api.get("/users");
       setUsers(Array.isArray(data) ? data : []);
     } catch (e) {
-      const errorMsg =
-        typeof e === "object"
-          ? e?.response?.data?.detail || e?.message || "Gagal memuat daftar pengguna"
-          : "Gagal memuat daftar pengguna";
-      toast.error(errorMsg);
+      const msg =
+        e?.response?.data?.detail || e?.message || "Gagal memuat daftar pengguna";
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -58,16 +55,20 @@ export default function Users() {
     try {
       const { data } = await api.get("/fungsi");
       setFungsiList(Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       setFungsiList(["Pemeriksaan", "Penindakan", "Infokom", "Tata Usaha", "Pengujian"]);
     }
   };
 
   useEffect(() => {
-    loadUsers();
-    loadFungsi();
+    // Gunakan IIFE untuk menghindari async di useEffect
+    (async () => {
+      await loadUsers();
+      await loadFungsi();
+    })();
   }, []);
 
+  // ----- TAMBAH USER -----
   const handleAddUser = async () => {
     if (!newUser.username || !newUser.password || !newUser.name) {
       toast.error("Username, password, dan nama wajib diisi");
@@ -95,31 +96,29 @@ export default function Users() {
         unit_kerja: "",
         jabatan: "staff",
       });
-      loadUsers();
+      await loadUsers();
     } catch (e) {
-      const errorMsg =
-        typeof e === "object"
-          ? e?.response?.data?.detail || e?.message || "Gagal menambahkan user"
-          : "Gagal menambahkan user";
-      toast.error(errorMsg);
+      const msg =
+        e?.response?.data?.detail || e?.message || "Gagal menambahkan user";
+      toast.error(msg);
     }
   };
 
+  // ----- HAPUS USER -----
   const handleDelete = async (userId) => {
     if (!window.confirm("Yakin ingin menghapus user ini?")) return;
     try {
       await api.delete(`/users/${userId}`);
       toast.success("User dihapus");
-      loadUsers();
+      await loadUsers();
     } catch (e) {
-      const errorMsg =
-        typeof e === "object"
-          ? e?.response?.data?.detail || e?.message || "Gagal menghapus user"
-          : "Gagal menghapus user";
-      toast.error(errorMsg);
+      const msg =
+        e?.response?.data?.detail || e?.message || "Gagal menghapus user";
+      toast.error(msg);
     }
   };
 
+  // ----- ROLE CHANGE (reset jabatan jika bukan pegawai) -----
   const handleRoleChange = (value, setter, state) => {
     if (value !== "pegawai") {
       setter({ ...state, role: value, jabatan: "staff" });
@@ -128,16 +127,19 @@ export default function Users() {
     }
   };
 
+  // ----- VIEW USER -----
   const handleView = (user) => {
     setViewUser(user);
     setShowViewModal(true);
   };
 
+  // ----- EDIT USER -----
   const handleEdit = (user) => {
     setEditUser({ ...user });
     setShowEditModal(true);
   };
 
+  // ----- UPDATE USER -----
   const handleUpdate = async () => {
     if (!editUser) return;
     try {
@@ -151,16 +153,15 @@ export default function Users() {
       await api.patch(`/users/${editUser.user_id}`, payload);
       toast.success("Data pengguna diperbarui");
       setShowEditModal(false);
-      loadUsers();
+      await loadUsers();
     } catch (e) {
-      const errorMsg =
-        typeof e === "object"
-          ? e?.response?.data?.detail || e?.message || "Gagal memperbarui user"
-          : "Gagal memperbarui user";
-      toast.error(errorMsg);
+      const msg =
+        e?.response?.data?.detail || e?.message || "Gagal memperbarui user";
+      toast.error(msg);
     }
   };
 
+  // ----- RENDER -----
   if (loading) {
     return <div className="text-slate-500">Memuat...</div>;
   }
