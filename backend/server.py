@@ -683,6 +683,40 @@ async def get_perencanaan(user=Depends(get_current_user)):
     for item in items:
         item["status"] = get_item_status(item)
     return items
+    
+@api.get("/surat/perencanaan")
+async def render_perencanaan(user=Depends(get_current_user)):
+    """Render surat perencanaan (daftar barang stok ≤ 5) ke Google Docs"""
+    items = await db.items.find(
+        {"stok": {"$lte": 5}},
+        {"_id": 0, "kode": 1, "nama": 1, "satuan": 1, "stok": 1, "expiry_date": 1}
+    ).to_list(500)
+    
+    settings = await db.settings.find_one({"key": SETTINGS_KEY}, {"_id": 0}) or {}
+    doc_id = settings.get("perencanaan_template_doc_id", "")
+    
+    if not doc_id:
+        raise HTTPException(400, "Template Perencanaan belum diatur. Buka menu Pengaturan.")
+    
+    ctx = {
+        "tanggal": now_utc().strftime("%d %B %Y"),
+        "total_item": len(items),
+    }
+    rows = []
+    for i, it in enumerate(items):
+        rows.append({
+            "no": i + 1,
+            "kode": it.get("kode", ""),
+            "nama": it.get("nama", ""),
+            "satuan": it.get("satuan", ""),
+            "stok": it.get("stok", 0),
+            "expiry_date": it.get("expiry_date", "-"),
+        })
+    
+    html_text = _fetch_gdoc_html(doc_id)
+    rendered = _render_template(html_text, ctx, rows)
+    return Response(content=rendered, media_type="text/html; charset=utf-8")
+
 # -------------------- Assets --------------------
 class AssetIn(BaseModel):
     nup: str
@@ -828,12 +862,14 @@ async def get_settings(user=Depends(get_current_user)):
     s = await db.settings.find_one({"key": SETTINGS_KEY}, {"_id": 0}) or {}
     return {
         "spb_template_doc_id": s.get("spb_template_doc_id", ""),
-        "sbbk_template_doc_id": s.get("sbbk_template_doc_id", ""),
+        "sbbk_template_doc_id": s.get("sbbk_template_doc_id", 
+        "perencanaan_template_doc_id": s.get("perencanaan_template_doc_id", ""),  # tambahkan
     }
 
 class SettingsIn(BaseModel):
     spb_template_doc_id: Optional[str] = None
     sbbk_template_doc_id: Optional[str] = None
+    perencanaan_template_doc_id: Optional[str] = None  # tambahkan
 
 def _extract_doc_id(s: str) -> str:
     if not s:
