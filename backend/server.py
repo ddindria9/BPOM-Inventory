@@ -274,6 +274,7 @@ class ItemIn(BaseModel):
     stok_min: int = 0
     is_reagen: bool = False
     expiry_date: Optional[str] = None
+    lokasi: str = ""       
 
 @api.get("/items")
 async def list_items(user=Depends(get_current_user)):
