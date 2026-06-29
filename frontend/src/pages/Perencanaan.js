@@ -92,13 +92,13 @@ export default function Perencanaan() {
             onClick={exportToExcel}
             className="bg-emerald-600 hover:bg-emerald-700"
           >
-            📊 Excel
+            Excel
           </Button>
           <Button 
             onClick={exportToPDF}
-            className="bg-red-600 hover:bg-red-700"
+            className="bg-red-600 hover:bg-blue-700"
           >
-            📄 PDF
+            PDF
           </Button>
         </div>
       </div>
