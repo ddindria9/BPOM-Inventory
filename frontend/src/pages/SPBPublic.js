@@ -27,18 +27,14 @@ export default function SPBPublic() {
     }
   }, [authLoading, user, navigate]);
 
-  // Pastikan items selalu array
-  useEffect(() => {
-    setItems([]); // reset ke array kosong
-  }, []);
-  
   // Ambil daftar barang (hanya jika user sudah login)
   useEffect(() => {
     if (!user) return;
     setLoading(true);
     axios.get(`${BACKEND_URL}/api/public/items`)
       .then(res => {
-        setItems(res.data);
+        // Pastikan data adalah array
+        setItems(Array.isArray(res.data) ? res.data : []);
         setLoading(false);
       })
       .catch(() => {
@@ -48,28 +44,40 @@ export default function SPBPublic() {
   }, [user]);
 
   const submit = async () => {
+    // Validasi: pastikan ada barang yang dipilih
     if (lines.some(l => !l.item_id || !l.jumlah)) {
       return toast.error("Lengkapi daftar barang");
     }
+
+    // Ambil jabatan dari user, default 'staff'
+    const jabatan = user?.jabatan || "staff";
+
     try {
-      const { data } = await axios.post(`${BACKEND_URL}/api/spb`, {
-        nama_peminta: user.name,
-        nip_peminta: user.nip || "",
+      const payload = {
+        nama_pegawai: user.name,
+        nip_pegawai: user.nip || "",
         unit_kerja: user.unit_kerja || "",
+        jabatan: jabatan,
         keperluan: keperluan,
         lines: lines.map(l => ({
           item_id: l.item_id,
           jumlah: Number(l.jumlah),
           keperluan: l.keperluan
         })),
-      });
+      };
+
+      const { data } = await axios.post(`${BACKEND_URL}/api/spb`, payload);
       setSubmitted(data);
       toast.success("Permintaan terkirim");
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Gagal mengirim permintaan");
+      // Tampilkan error dari backend jika ada
+      const msg = e?.response?.data?.detail || "Gagal mengirim permintaan";
+      toast.error(msg);
+      console.error("Submit error:", e.response?.data);
     }
   };
 
+  // Tampilan loading auth
   if (authLoading) {
     return <div className="min-h-screen bg-slate-50 grid place-items-center">Memuat...</div>;
   }
@@ -126,8 +134,8 @@ export default function SPBPublic() {
               <div className="font-medium">{user.nip || '-'}</div>
             </div>
             <div>
-              <Label className="text-xs text-slate-500">Fungsi</Label>
-              <div className="font-medium">{user.unit_kerja || '-'}</div>
+              <Label className="text-xs text-slate-500">Fungsi / Jabatan</Label>
+              <div className="font-medium">{user.unit_kerja || '-'} {user.jabatan ? `(${user.jabatan})` : ''}</div>
             </div>
           </div>
 
@@ -170,12 +178,13 @@ export default function SPBPublic() {
                   >
                     <option value="">-- Pilih barang --</option>
                     {Array.isArray(items) && items
-                      .filter(it => it.stok > 0) // <-- tambahkan filter ini
+                      .filter(it => it.stok > 0)  // Hanya tampilkan stok > 0
                       .map(it => (
-                      <option key={it.id} value={it.id}>
-                        {it.kode} · {it.nama} ({it.satuan}) - Stok: {it.stok}
-                      </option>
-                    ))}
+                        <option key={it.id} value={it.id}>
+                          {it.kode} · {it.nama} ({it.satuan}) - Stok: {it.stok}
+                        </option>
+                      ))
+                    }
                   </select>
                   <Input 
                     type="number" 
