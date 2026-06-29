@@ -47,7 +47,7 @@ export default function SPBList() {
                 <tr key={d.id} className="border-t border-slate-100">
                   <td className="px-4 py-3 font-mono-data text-xs">{d.nomor}</td>
                   <td>{fmtDate(d.created_at)}</td>
-                  <td>{d.nama_pegawai}</td>
+                  <td>{d.nama_peminta}</td>
                   <td>{d.unit_kerja}</td>
                   <td className="text-right">{d.lines?.length}</td>
                   <td>
