@@ -12,9 +12,8 @@ export default function Approval() {
   const [items, setItems] = useState([]);
   const [pending, setPending] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [paraf, setParaf] = useState("");
   const [alasan, setAlasan] = useState("");
-  // State untuk line adjustments (disetujui & keterangan)
+  const [checkedApprove, setCheckedApprove] = useState(false);
   const [lineAdjustments, setLineAdjustments] = useState({});
 
   const load = async () => {
@@ -29,18 +28,19 @@ export default function Approval() {
 
   const nameOf = (id) => items.find(x => x.id === id)?.nama || id;
 
-  // Ketika memilih SPB, inisialisasi lineAdjustments dengan nilai default
   const handleSelect = (spb) => {
     setSelected(spb);
     const adjustments = {};
     spb.lines.forEach((l, idx) => {
       adjustments[idx] = {
         item_id: l.item_id,
-        disetujui: l.jumlah, // default = jumlah yang diminta
+        disetujui: l.jumlah,
         keterangan: l.keterangan || ""
       };
     });
     setLineAdjustments(adjustments);
+    setCheckedApprove(false);
+    setAlasan("");
   };
 
   const handleAdjustmentChange = (idx, field, value) => {
@@ -52,11 +52,13 @@ export default function Approval() {
 
   const act = async (action) => {
     if (!selected) return;
-    if (action === "APPROVE" && !paraf) return toast.error("Isi paraf/tanda tangan digital");
+    if (action === "APPROVE") {
+      if (!checkedApprove) return toast.error("Harap centang 'Saya menyetujui'");
+      // Jika perlu validasi lain
+    }
     if (action === "REJECT" && !alasan) return toast.error("Isi alasan penolakan");
 
     try {
-      // Siapkan data lines
       const linesData = Object.values(lineAdjustments).map(l => ({
         item_id: l.item_id,
         disetujui: Number(l.disetujui),
@@ -65,15 +67,15 @@ export default function Approval() {
 
       await api.post(`/spb/${selected.id}/action`, {
         action,
-        paraf,
-        alasan,
+        alasan: action === "REJECT" ? alasan : "", // alasan hanya untuk reject
+        paraf: "", // tidak digunakan
         lines: linesData
       });
 
       toast.success(action === "APPROVE" ? "Disetujui & SBBK dibuat" : "Permintaan ditolak");
       setSelected(null);
-      setParaf("");
       setAlasan("");
+      setCheckedApprove(false);
       setLineAdjustments({});
       load();
     } catch (e) {
@@ -91,11 +93,7 @@ export default function Approval() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {pending.map((s) => (
-          <div
-            key={s.id}
-            data-testid={`approval-card-${s.nomor}`}
-            className="bg-white border border-slate-200 rounded-lg p-5 hover:-translate-y-0.5 transition-transform"
-          >
+          <div key={s.id} data-testid={`approval-card-${s.nomor}`} className="bg-white border border-slate-200 rounded-lg p-5 hover:-translate-y-0.5 transition-transform">
             <div className="flex items-center justify-between">
               <div className="font-mono-data text-sm">{s.nomor}</div>
               <span className="text-xs text-slate-500">{fmtDate(s.created_at)}</span>
@@ -113,20 +111,10 @@ export default function Approval() {
                 </div>
               ))}
             </div>
-            <Button
-              data-testid={`approval-open-${s.nomor}`}
-              onClick={() => handleSelect(s)}
-              className="w-full mt-4 bg-[#1E3A8A] hover:bg-[#1E2A6B]"
-            >
-              Tinjau
-            </Button>
+            <Button onClick={() => handleSelect(s)} className="w-full mt-4 bg-[#1E3A8A] hover:bg-[#1E2A6B]">Tinjau</Button>
           </div>
         ))}
-        {pending.length === 0 && (
-          <div className="lg:col-span-2 text-center text-slate-400 py-12 bg-white border border-slate-200 rounded-lg">
-            Tidak ada permintaan menunggu.
-          </div>
-        )}
+        {pending.length === 0 && <div className="lg:col-span-2 text-center text-slate-400 py-12 bg-white border border-slate-200 rounded-lg">Tidak ada permintaan menunggu.</div>}
       </div>
 
       <Dialog open={!!selected} onOpenChange={(v) => !v && setSelected(null)}>
@@ -140,7 +128,6 @@ export default function Approval() {
                 <span className="text-slate-500">Pegawai:</span> {selected.nama_pegawai} · {selected.unit_kerja}
               </div>
 
-              {/* Daftar barang dengan kolom disetujui dan keterangan */}
               <div className="bg-slate-50 rounded p-3">
                 <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                   <div className="col-span-4">Nama Barang</div>
@@ -174,39 +161,33 @@ export default function Approval() {
                 ))}
               </div>
 
-              <div>
-                <Label>Paraf / Tanda Tangan Digital</Label>
-                <Input
-                  data-testid="approval-paraf"
-                  value={paraf}
-                  onChange={(e) => setParaf(e.target.value)}
-                  placeholder="Inisial / nama lengkap..."
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="approve-check"
+                  checked={checkedApprove}
+                  onChange={(e) => setCheckedApprove(e.target.checked)}
+                  className="w-4 h-4 text-[#1E3A8A]"
                 />
+                <Label htmlFor="approve-check" className="text-sm font-normal">Saya menyetujui permintaan ini</Label>
               </div>
+
               <div>
                 <Label>Alasan (jika menolak)</Label>
                 <Textarea
                   value={alasan}
                   onChange={(e) => setAlasan(e.target.value)}
                   rows={2}
+                  placeholder="Isi alasan penolakan jika menolak"
                 />
               </div>
             </div>
           )}
           <DialogFooter className="gap-2">
-            <Button
-              data-testid="approval-reject"
-              variant="outline"
-              onClick={() => act("REJECT")}
-              className="border-red-300 text-red-700"
-            >
+            <Button variant="outline" onClick={() => act("REJECT")} className="border-red-300 text-red-700">
               <XCircle className="w-4 h-4 mr-1" />Tolak
             </Button>
-            <Button
-              data-testid="approval-approve"
-              onClick={() => act("APPROVE")}
-              className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"
-            >
+            <Button onClick={() => act("APPROVE")} className="bg-[#1E3A8A] hover:bg-[#1E2A6B]">
               <CheckCircle2 className="w-4 h-4 mr-1" />Setujui
             </Button>
           </DialogFooter>
