@@ -1,48 +1,48 @@
 import React, { useState } from "react";
-import { ShieldCheck, ArrowRight } from "lucide-react";
+import { ShieldCheck, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { api } from "../lib/api";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../contexts/AuthContext";
+import { BACKEND_URL } from "../lib/api";
 
 export default function Login() {
-  const navigate = useNavigate();
-  const { setUser } = useAuth();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const handleManualLogin = async (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-
-    if (!email || !password) {
-      alert("email dan password wajib diisi");
+    if (!identifier || !password) {
+      alert("Username/Email dan password wajib diisi");
       return;
     }
-
     setLoading(true);
-
     try {
-      const { data } = await api.post("/auth/login", {
-        email,
-        password,
+      const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ identifier, password }),
       });
-
-      localStorage.setItem("token", data.token);
-      api.defaults.headers.common["Authorization"] = `Bearer ${data.token}`;
-
-      setUser(data.user);
-      navigate("/dashboard", { replace: true });
+      if (response.status === 307) {
+        const redirectUrl = response.headers.get("location");
+        window.location.href = redirectUrl;
+      } else {
+        const data = await response.json();
+        if (data.token) {
+          localStorage.setItem("token", data.token);
+          window.location.href = "/dashboard";
+        } else {
+          alert(data.detail || "Login gagal. Periksa username/email dan password.");
+        }
+      }
     } catch (err) {
-      console.error("Login error:", err);
-      alert(err.response?.data?.detail || "Login gagal. Periksa email dan password.");
+      alert("Terjadi kesalahan. Coba lagi.");
     } finally {
       setLoading(false);
     }
   };
-  
+
   return (
     <div className="min-h-screen grid grid-cols-1 lg:grid-cols-2">
       {/* Left panel */}
@@ -68,31 +68,41 @@ export default function Login() {
           <div className="text-sm text-gray-500 mb-2">Akses Terbatas</div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Masuk ke sistem</h2>
           <p className="text-gray-500 mb-6">
-            Masukkan email dan password Anda.
+            Masukkan Username atau Email dan Password Anda.
           </p>
 
-          <form onSubmit={handleManualLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <Label htmlFor="email">email</Label>
+              <Label htmlFor="identifier">Username / Email</Label>
               <Input
-                id="email"
+                id="identifier"
                 type="text"
-                value={email}
-                onChange={(e) => (e.target.value)}
-                placeholder="Masukkan email"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="Masukkan username atau email"
                 disabled={loading}
               />
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Masukkan password"
-                disabled={loading}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Masukkan password"
+                  className="pr-10"
+                  disabled={loading}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <Button
               type="submit"
@@ -104,6 +114,10 @@ export default function Login() {
             </Button>
           </form>
 
+          <p className="text-xs text-gray-400 mt-6 text-center">
+            Pegawai dapat menggunakan{' '}
+            <a href="/spb-public" className="text-[#1E3A8A] hover:underline">Formulir Permintaan Publik</a>.
+          </p>
         </div>
       </div>
     </div>
