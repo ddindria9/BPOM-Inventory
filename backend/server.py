@@ -153,31 +153,29 @@ async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
     return {"ok": True, "user_id": user_id}
 
 class LoginIn(BaseModel):
-    email: str
+    identifier: str  # bisa username atau email
     password: str
-
-def public_user(user: dict) -> dict:
-    user = clean(dict(user))
-    user.pop("password", None)
-    return user
 
 @api.post("/auth/login")
 async def login(body: LoginIn, response: Response):
-    """Login manual dengan email dan password."""
-    user = await db.users.find_one({"email": body.email})
+    """Login dengan username atau email."""
+    # Coba cari berdasarkan username dulu
+    user = await db.users.find_one({"username": body.identifier})
+    # Jika tidak ditemukan, coba berdasarkan email
     if not user:
-        raise HTTPException(401, "email atau password salah")
+        user = await db.users.find_one({"email": body.identifier})
+    if not user:
+        raise HTTPException(401, "Username/Email atau password salah")
     
     if not bcrypt.checkpw(body.password.encode(), user["password"].encode()):
-        raise HTTPException(401, "email atau password salah")
+        raise HTTPException(401, "Username/Email atau password salah")
     
     token = create_jwt(user["user_id"])
-    
     return {
         "token": token,
         "user": public_user(user)
     }
-
+    
 @api.get("/auth/me")
 async def auth_me(user=Depends(get_current_user)):
     return user
@@ -1137,19 +1135,19 @@ async def startup():
     log.info("Starting up...")
     await db.items.create_index("kode", unique=False)
     await db.movements.create_index("item_id")
-    await db.users.create_index("email", unique=True)
-    try:
-        await db.users.drop_index("email_1")
-    except Exception:
-        pass
-
+    await db.users.create_index("username", unique=True)  # biarkan ini tetap
+    # HAPUS atau KOMENTARI bagian ini:
+    # try:
+    #     await db.users.drop_index("email_1")
+    # except Exception:
+    #     pass
     # await db.users.create_index(
     #     "email",
     #     unique=True,
     #     partialFilterExpression={"email": {"$type": "string"}}
     # )
     await db.user_sessions.create_index("session_token", unique=True)
-
+    
 @app.on_event("shutdown")
 async def shutdown():
     client.close()
