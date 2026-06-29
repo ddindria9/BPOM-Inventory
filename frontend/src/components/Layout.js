@@ -21,6 +21,14 @@ const NAV = [
   { to: "/settings", label: "Pengaturan", icon: SettingsIcon },
 ];
 
+const canAccessApproval = (user) => {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'approver') return true;
+  if (user.role === 'pegawai' && user.jabatan === 'kepala_fungsi') return true;
+  return false;
+};
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = React.useState(false);
