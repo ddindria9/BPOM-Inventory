@@ -123,7 +123,7 @@ export default function SPBPublic() {
         </div>
 
         <div className="bg-white border border-slate-200 rounded-lg p-6 sm:p-8">
-          {/* Informasi Peminta (auto-fill) */}
+          {/* Informasi Pegawai (auto-fill) */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 p-3 bg-slate-50 rounded">
             <div>
               <Label className="text-xs text-slate-500">Nama Pegawai</Label>
