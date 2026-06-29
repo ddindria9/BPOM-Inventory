@@ -36,7 +36,9 @@ export default function Users() {
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
-
+  const { data } = await api.get("/users");
+  console.log("📦 Data users:", data);
+  setUsers(Array.isArray(data) ? data : []);
   const loadUsers = async () => {
     try {
       const { data } = await api.get("/users");
