@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, BACKEND_URL } from "../lib/api"; // ← pastikan BACKEND_URL di-import
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 
@@ -35,7 +35,7 @@ export default function Perencanaan() {
           </div>
         </div>
         <Button 
-          onClick={() => window.open("/surat/perencanaan", "_blank")}
+          onClick={() => window.open(`${BACKEND_URL}/api/surat/perencanaan`, "_blank")} // ← pakai BACKEND_URL
           className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"
         >
           📄 Export ke Google Docs
@@ -73,7 +73,7 @@ export default function Perencanaan() {
               ))}
               {items.length === 0 && (
                 <tr><td colSpan={6} className="p-6 text-center text-slate-400">
-                  ✅ Semua barang dalam kondisi stok aman.
+                   Semua barang dalam kondisi stok aman.
                 </td></tr>
               )}
             </tbody>
