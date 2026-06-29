@@ -9,13 +9,15 @@ import { toast } from "sonner";
 const COLORS = { BAIK: "#1E3A8A", RUSAK_RINGAN: "#F59E0B", RUSAK_BERAT: "#DC2626" };
 
 function Stat({ icon: Icon, label, value, accent, testid }) {
+  // Pastikan value tidak undefined/null, tampilkan 0 sebagai fallback
+  const displayValue = (value === undefined || value === null) ? 0 : value;
   return (
     <div data-testid={testid} className="rise-in bg-white border border-slate-200 rounded-lg p-5 hover:-translate-y-0.5 transition-transform">
       <div className="flex items-center justify-between">
         <div className="text-[11px] uppercase tracking-[0.18em] text-slate-500">{label}</div>
         <Icon className={`w-4 h-4 ${accent || "text-slate-400"}`} />
       </div>
-      <div className="mt-2 font-display text-3xl text-slate-900">{value}</div>
+      <div className="mt-2 font-display text-3xl text-slate-900">{displayValue}</div>
     </div>
   );
 }
@@ -26,8 +28,32 @@ export default function Dashboard() {
   const load = async () => {
     try {
       const { data } = await api.get("/dashboard/stats");
-      setStats(data);
-    } catch (e) { toast.error("Gagal memuat dashboard"); }
+      // Pastikan data memiliki properti yang diharapkan dengan fallback
+      setStats({
+        ...data,
+        kondisi_counts: data.kondisi_counts || {},
+        low_stock_items: Array.isArray(data.low_stock_items) ? data.low_stock_items : [],
+        expiring: Array.isArray(data.expiring) ? data.expiring : [],
+        total_items: data.total_items || 0,
+        low_stock_count: data.low_stock_count || 0,
+        pending_spb: data.pending_spb || 0,
+        total_nilai: data.total_nilai || 0,
+        total_assets: data.total_assets || 0,
+      });
+    } catch (e) {
+      toast.error("Gagal memuat dashboard");
+      // Set state dengan data kosong agar tidak crash
+      setStats({
+        kondisi_counts: {},
+        low_stock_items: [],
+        expiring: [],
+        total_items: 0,
+        low_stock_count: 0,
+        pending_spb: 0,
+        total_nilai: 0,
+        total_assets: 0,
+      });
+    }
   };
 
   useEffect(() => { load(); }, []);
@@ -39,7 +65,12 @@ export default function Dashboard() {
 
   if (!stats) return <div className="text-slate-500">Memuat...</div>;
 
-  const kondisiData = Object.entries(stats.kondisi_counts).map(([k, v]) => ({ name: k.replace("_", " "), value: v, key: k }));
+  // Data untuk pie chart – aman karena sudah fallback {}
+  const kondisiData = Object.entries(stats.kondisi_counts).map(([k, v]) => ({
+    name: k.replace("_", " "),
+    value: v,
+    key: k
+  }));
   const totalAssets = kondisiData.reduce((s, x) => s + x.value, 0);
 
   return (
@@ -50,7 +81,9 @@ export default function Dashboard() {
           <h1 className="font-display text-3xl sm:text-4xl text-slate-900 mt-1">Dashboard Inventory</h1>
         </div>
         {stats.total_items === 0 && (
-          <Button data-testid="dashboard-seed-button" onClick={seed} className="bg-[#1E3A8A] hover:bg-[#1E2A6B]">Isi Data Contoh</Button>
+          <Button data-testid="dashboard-seed-button" onClick={seed} className="bg-[#1E3A8A] hover:bg-[#1E2A6B]">
+            Isi Data Contoh
+          </Button>
         )}
       </div>
 
@@ -95,7 +128,7 @@ export default function Dashboard() {
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           <h3 className="font-display text-lg">Kondisi Aset</h3>
           <div className="text-xs text-slate-500">Total {totalAssets} aset</div>
-          <div className="h-52 mt-4">
+          <div className="h-52 mt-4" style={{ width: '100%' }}>  {/* ← pastikan lebar 100% */}
             {totalAssets === 0 ? (
               <div className="h-full grid place-items-center text-sm text-slate-400">Belum ada data aset</div>
             ) : (
