@@ -24,17 +24,14 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifier, password }),
       });
-      if (response.status === 307) {
-        const redirectUrl = response.headers.get("location");
-        window.location.href = redirectUrl;
+      
+      const data = await response.json();
+      
+      if (response.ok && data.token) {
+        localStorage.setItem("token", data.token);
+        window.location.href = "/dashboard";
       } else {
-        const data = await response.json();
-        if (data.token) {
-          localStorage.setItem("token", data.token);
-          window.location.href = "/dashboard";
-        } else {
-          alert(data.detail || "Login gagal. Periksa username/email dan password.");
-        }
+        alert(data.detail || "Login gagal. Periksa username/email dan password.");
       }
     } catch (err) {
       alert("Terjadi kesalahan. Coba lagi.");
@@ -72,8 +69,11 @@ export default function Login() {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
+            {/* Field Identifier (Username atau Email) */}
             <div>
-              <Label htmlFor="identifier">Username / Email</Label>
+              <Label htmlFor="identifier" className="text-sm font-medium text-gray-700">
+                Username / Email
+              </Label>
               <Input
                 id="identifier"
                 type="text"
@@ -81,29 +81,41 @@ export default function Login() {
                 onChange={(e) => setIdentifier(e.target.value)}
                 placeholder="Masukkan username atau email"
                 disabled={loading}
+                className="w-full mt-1"
               />
             </div>
+
+            {/* Field Password dengan Icon Mata */}
             <div>
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
+              <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                Password
+              </Label>
+              <div className="relative mt-1">
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Masukkan password"
-                  className="pr-10"
+                  className="w-full pr-10"
                   disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
+                  aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
                 </button>
               </div>
             </div>
+
+            {/* Tombol Login */}
             <Button
               type="submit"
               className="w-full bg-[#1E3A8A] hover:bg-[#1E2A6B] text-white py-6 text-base"
@@ -116,7 +128,9 @@ export default function Login() {
 
           <p className="text-xs text-gray-400 mt-6 text-center">
             Pegawai dapat menggunakan{' '}
-            <a href="/spb-public" className="text-[#1E3A8A] hover:underline">Formulir Permintaan Publik</a>.
+            <a href="/spb-public" className="text-[#1E3A8A] hover:underline">
+              Formulir Permintaan Publik
+            </a>.
           </p>
         </div>
       </div>
