@@ -64,6 +64,12 @@ def clean(doc: dict) -> dict:
         doc.pop("_id", None)
     return doc
 
+def public_user(user: dict) -> dict:
+    """Remove sensitive fields from user object before sending to client."""
+    user = clean(dict(user))
+    user.pop("password", None)
+    return user
+
 # -------------------- JWT Auth --------------------
 def create_jwt(user_id: str) -> str:
     payload = {
