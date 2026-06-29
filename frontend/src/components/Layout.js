@@ -3,29 +3,33 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   LayoutDashboard, Package, TruckIcon, FileText, CheckSquare,
-  Printer, History, Box, ClipboardList, UsersRound, LogOut, Menu, X, Settings as SettingsIcon,
+  History, Box, ClipboardList, UsersRound, LogOut, Menu, X, Settings as SettingsIcon,
   CalendarClock 
 } from "lucide-react";
 
-const NAV = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/master", label: "Data Master", icon: Package },
-  { to: "/incoming", label: "Barang Masuk", icon: TruckIcon },
-  { to: "/spb", label: "Permintaan (SPB)", icon: FileText },
-  { to: "/approval", label: "Approval", icon: CheckSquare },
-  { to: "/stock-card", label: "Kartu Stok", icon: History },
-  { to: "/assets", label: "Aset & QR", icon: Box },
-  { to: "/reports", label: "Laporan", icon: ClipboardList },
-  { to: "/perencanaan", label: "Perencanaan", icon: CalendarClock }, 
-  { to: "/users", label: "Pengguna", icon: UsersRound },
-  { to: "/settings", label: "Pengaturan", icon: SettingsIcon },
+// Definisi menu dengan properti akses
+const NAV_ITEMS = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "pegawai", "admin_gudang", "approver", "pengelola_aset"] },
+  { to: "/master", label: "Data Master", icon: Package, roles: ["admin", "admin_gudang"] },
+  { to: "/incoming", label: "Barang Masuk", icon: TruckIcon, roles: ["admin", "admin_gudang"] },
+  { to: "/spb", label: "Permintaan (SPB)", icon: FileText, roles: ["admin", "pegawai", "approver"] },
+  // Approval hanya untuk admin, approver, atau pegawai dengan jabatan kepala_fungsi
+  { to: "/approval", label: "Approval", icon: CheckSquare, roles: ["admin", "approver"], customCheck: (user) => user?.role === "pegawai" && user?.jabatan === "kepala_fungsi" },
+  { to: "/stock-card", label: "Kartu Stok", icon: History, roles: ["admin", "admin_gudang"] },
+  { to: "/assets", label: "Aset & QR", icon: Box, roles: ["admin", "pengelola_aset"] },
+  { to: "/reports", label: "Laporan", icon: ClipboardList, roles: ["admin", "admin_gudang"] },
+  { to: "/perencanaan", label: "Perencanaan", icon: CalendarClock, roles: ["admin", "admin_gudang"] },
+  { to: "/users", label: "Pengguna", icon: UsersRound, roles: ["admin"] },
+  { to: "/settings", label: "Pengaturan", icon: SettingsIcon, roles: ["admin"] },
 ];
 
-const canAccessApproval = (user) => {
+// Fungsi untuk mengecek apakah user bisa mengakses menu
+const canAccess = (item, user) => {
   if (!user) return false;
-  if (user.role === 'admin') return true;
-  if (user.role === 'approver') return true;
-  if (user.role === 'pegawai' && user.jabatan === 'kepala_fungsi') return true;
+  // Cek customCheck dulu (untuk Approval)
+  if (item.customCheck && item.customCheck(user)) return true;
+  // Cek roles
+  if (item.roles && item.roles.includes(user.role)) return true;
   return false;
 };
 
@@ -33,6 +37,9 @@ export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const [open, setOpen] = React.useState(false);
   const navigate = useNavigate();
+
+  // Filter menu berdasarkan user
+  const filteredNav = NAV_ITEMS.filter(item => canAccess(item, user));
 
   return (
     <div className="min-h-screen bg-slate-50 flex">
@@ -47,7 +54,7 @@ export default function Layout({ children }) {
           <button className="ml-auto lg:hidden p-1" onClick={() => setOpen(false)}><X className="w-5 h-5" /></button>
         </div>
         <nav className="p-3 flex-1 overflow-y-auto">
-          {NAV.map((n) => {
+          {filteredNav.map((n) => {
             const Icon = n.icon;
             return (
               <NavLink
