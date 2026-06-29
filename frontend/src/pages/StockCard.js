@@ -84,6 +84,7 @@ export default function StockCard() {
             <div>
               <div className="font-display text-lg">{data.item.nama}</div>
               <div className="text-xs text-slate-500 font-mono-data">{data.item.kode}</div>
+              <div className="text-xs text-slate-500">Lokasi: {data.item.lokasi || "-"}</div>
             </div>
             <div className="flex items-center gap-6">
               <div className="text-right">
@@ -96,13 +97,13 @@ export default function StockCard() {
                     onClick={exportToExcel}
                     className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded"
                   >
-                    📊 Excel
+                    Excel
                   </button>
                   <button
                     onClick={exportToPDF}
-                    className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded"
+                    className="text-xs bg-red-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded"
                   >
-                    📄 PDF
+                    PDF
                   </button>
                 </div>
               )}
