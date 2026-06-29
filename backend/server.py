@@ -7,6 +7,7 @@ import os, io, uuid, logging, re, shutil, aiofiles
 from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime, timedelta
 from datetime import datetime, timezone, timedelta
 import qrcode
 import jwt
@@ -53,6 +54,27 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name
 log = logging.getLogger("inventory")
 
 # -------------------- Helpers --------------------
+
+def get_item_status(item):
+    """Return status for item: 'expiring_soon', 'low_stock', 'normal'"""
+    status = "normal"
+    
+    # Cek stok menipis (<= 5)
+    if item.get("stok", 0) <= 5:
+        status = "low_stock"
+    
+    # Cek kadaluwarsa (jika is_reagen dan expiry_date ada)
+    if item.get("is_reagen") and item.get("expiry_date"):
+        try:
+            expiry = datetime.strptime(item["expiry_date"], "%Y-%m-%d")
+            days_left = (expiry - datetime.now()).days
+            if days_left <= 180:  # 6 bulan
+                status = "expiring_soon"
+        except:
+            pass
+    
+    return status
+
 def now_utc():
     return datetime.now(timezone.utc)
 
@@ -196,11 +218,12 @@ async def logout():
 
 @api.get("/public/items")
 async def public_items():
-    """Public endpoint untuk daftar barang yang tersedia (tanpa login)."""
     items = await db.items.find(
         {}, 
-        {"_id": 0, "id": 1, "kode": 1, "nama": 1, "satuan": 1, "stok": 1}
+        {"_id": 0, "id": 1, "kode": 1, "nama": 1, "satuan": 1, "stok": 1, "is_reagen": 1, "expiry_date": 1}
     ).to_list(5000)
+    for item in items:
+        item["status"] = get_item_status(item)
     items = sorted(items, key=lambda x: x.get("nama", ""))
     return items
 
@@ -254,6 +277,8 @@ class ItemIn(BaseModel):
 @api.get("/items")
 async def list_items(user=Depends(get_current_user)):
     items = await db.items.find({}, {"_id": 0}).sort("kode", 1).to_list(2000)
+    for item in items:
+        item["status"] = get_item_status(item)
     return items
 
 @api.post("/items")
@@ -646,6 +671,18 @@ async def list_sbbk(user=Depends(get_current_user)):
     docs = await db.sbbk.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return docs
 
+# -------------------- Perencanaan ---------------
+@api.get("/perencanaan")
+async def get_perencanaan(user=Depends(get_current_user)):
+    """Daftar barang dengan stok di bawah minimum (<= 5)"""
+    items = await db.items.find(
+        {"stok": {"$lte": 5}},
+        {"_id": 0, "kode": 1, "nama": 1, "satuan": 1, "stok": 1, "stok_min": 1, "expiry_date": 1, "is_reagen": 1}
+    ).sort("stok", 1).to_list(500)
+    
+    for item in items:
+        item["status"] = get_item_status(item)
+    return items
 # -------------------- Assets --------------------
 class AssetIn(BaseModel):
     nup: str
