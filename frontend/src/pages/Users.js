@@ -12,7 +12,6 @@ export default function Users() {
   const [loading, setLoading] = useState(true);
   const [fungsiList, setFungsiList] = useState([]);
 
-  // State untuk modal tambah user
   const [showAddModal, setShowAddModal] = useState(false);
   const [newUser, setNewUser] = useState({
     username: "",
@@ -30,7 +29,7 @@ export default function Users() {
     try {
       const { data } = await api.get("/users");
       setUsers(Array.isArray(data) ? data : []);
-    } catch {
+    } catch (e) {
       toast.error("Gagal memuat daftar pengguna");
     } finally {
       setLoading(false);
@@ -60,7 +59,7 @@ export default function Users() {
       return;
     }
     try {
-      await api.post("/auth/register", {
+      const response = await api.post("/auth/register", {
         username: newUser.username,
         password: newUser.password,
         name: newUser.name,
@@ -69,6 +68,7 @@ export default function Users() {
         unit_kerja: newUser.unit_kerja || "",
         jabatan: newUser.jabatan || "staff",
       });
+      // Jika response berhasil (status 2xx)
       toast.success("User berhasil ditambahkan");
       setShowAddModal(false);
       setNewUser({
@@ -82,12 +82,19 @@ export default function Users() {
       });
       await loadUsers();
     } catch (e) {
-      const msg = e?.response?.data?.detail || e?.message || "Gagal menambahkan user";
+      // Tangkap error dengan aman
+      let msg = "Gagal menambahkan user";
+      if (e?.response?.data?.detail) {
+        msg = e.response.data.detail;
+      } else if (e?.response?.data?.message) {
+        msg = e.response.data.message;
+      } else if (e?.message) {
+        msg = e.message;
+      }
       toast.error(msg);
     }
   };
 
-  // Reset form saat modal ditutup
   const handleModalClose = (open) => {
     if (!open) {
       setShowAddModal(false);
