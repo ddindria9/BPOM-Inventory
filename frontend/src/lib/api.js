@@ -12,12 +12,13 @@ export const fmtIDR = (n) => {
   return "Rp " + Number(n).toLocaleString("id-ID");
 };
 
-export const fmtDate = (s) => {
-  if (!s) return "-";
+export const fmtDate = (d) => {
+  if (!d) return "-";
   try {
-    const d = new Date(s);
-    return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
-  } catch { return s; }
+    return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+  } catch {
+    return "-";
+  }
 };
 
 export const BULAN_ROMAWI = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
