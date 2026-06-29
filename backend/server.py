@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 from datetime import datetime, timezone, timedelta
 import qrcode
 import jwt
-# import httpx
-import bcrypt  # 
+import httpx
+import bcrypt   
 import requests
 import base64
 
@@ -146,34 +146,35 @@ def require_role(*roles):
 # ==================== AUTH MANUAL (email/PASSWORD) =====
 # ==========================================================
 
+# -------------------- REGISTER --------------------
 class RegisterIn(BaseModel):
-    email: str
+    username: str
     password: str
     name: str
-    nip: str = ""             
+    nip: str = ""
     role: str = "pegawai"
     unit_kerja: str = ""
-    jabatan: str = "staff"  # baru
+    jabatan: str = "staff"
 
 @api.post("/auth/register")
-async def register(body: RegisterIn): #, user=Depends(require_role("admin"))):
-    """Hanya admin yang bisa membuat akun baru."""
-    existing = await db.users.find_one({"email": body.email})
+async def register(body: RegisterIn): # , user=Depends(require_role("admin"))):
+    """Register user baru. Untuk sementara tanpa proteksi admin."""
+    existing = await db.users.find_one({"username": body.username})
     if existing:
-        raise HTTPException(400, "email sudah digunakan")
+        raise HTTPException(400, "Username sudah digunakan")
     
     hashed = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt())
     user_id = f"user_{uuid.uuid4().hex[:12]}"
     
     await db.users.insert_one({
         "user_id": user_id,
-        "email": body.email,
+        "username": body.username,
         "password": hashed.decode(),
         "name": body.name,
-        "nip": body.nip,            
+        "nip": body.nip or "",
         "role": body.role,
-        "unit_kerja": body.unit_kerja,
-        "jabatan": body.jabatan,  # tambahkan
+        "unit_kerja": body.unit_kerja or "",
+        "jabatan": body.jabatan or "staff",
         "email": None,
         "picture": "",
         "created_at": iso(now_utc())
