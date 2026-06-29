@@ -8,7 +8,7 @@ import { Switch } from "../components/ui/switch";
 import { Plus, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 
-const emptyItem = { kode: "", nama: "", kategori: "", satuan: "pcs", harga: 0, stok_min: 0, is_reagen: false, expiry_date: "" };
+const emptyItem = { kode: "", nama: "", kategori: "", satuan: "pcs", harga: 0, stok_min: 0, is_reagen: false, expiry_date: "", lokasi: ""  };
 
 export default function MasterData() {
   const [items, setItems] = useState([]);
@@ -142,6 +142,7 @@ export default function MasterData() {
                     <div>kode / Kode Barang</div>
                     <div>nama / Nama Barang</div>
                     <div>kategori</div>
+                    <div>lokasi</div>
                     <div>satuan / unit</div>
                     <div>harga / Harga Jual</div>
                     <div>stok_min</div>
@@ -198,6 +199,7 @@ export default function MasterData() {
                 <div className="col-span-1"><Label>Satuan</Label><Input value={form.satuan} onChange={(e) => setForm({ ...form, satuan: e.target.value })} /></div>
                 <div className="col-span-2"><Label>Nama Barang</Label><Input data-testid="form-nama" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} /></div>
                 <div className="col-span-2"><Label>Kategori</Label><Input value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} /></div>
+                <div className="col-span-2"><Label>Lokasi</Label><Input value={form.lokasi} onChange={(e) => setForm({ ...form, lokasi: e.target.value })} placeholder="Lokasi" /></div>
                 <div><Label>Harga Satuan</Label><Input type="number" value={form.harga} onChange={(e) => setForm({ ...form, harga: e.target.value })} /></div>
                 <div><Label>Stok Minimum</Label><Input type="number" value={form.stok_min} onChange={(e) => setForm({ ...form, stok_min: e.target.value })} /></div>
                 <div className="col-span-2 flex items-center gap-3 pt-2">
@@ -222,6 +224,7 @@ export default function MasterData() {
                 <th className="text-left px-4 py-3">Kode</th>
                 <th className="text-left">Nama</th>
                 <th className="text-left">Kategori</th>
+                <th className="text-left">Lokasi</th>
                 <th className="text-left">Satuan</th>
                 <th className="text-right">Harga</th>
                 <th className="text-right">Stok</th>
@@ -236,6 +239,7 @@ export default function MasterData() {
                   <td className="px-4 py-3 font-mono-data text-xs">{it.kode}</td>
                   <td className={getStatusColor(it)}>{it.nama}</td>
                   <td className="text-slate-500">{it.kategori}</td>
+                  <td>{it.lokasi || "-"}</td>
                   <td>{it.satuan}</td>
                   <td className="text-right">{fmtIDR(it.harga)}</td>
                   <td className={`text-right font-semibold ${it.stok <= it.stok_min ? "text-red-600" : ""}`}>{it.stok}</td>
