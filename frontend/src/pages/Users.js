@@ -84,7 +84,6 @@ export default function Users() {
       });
       loadUsers();
     } catch (e) {
-      // Tangkap error dari response agar tidak jadi objek yang di-render
       const errorMsg = e?.response?.data?.detail || e?.message || "Gagal menambahkan user";
       toast.error(errorMsg);
     }
@@ -388,7 +387,7 @@ export default function Users() {
                   className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
                 >
                   <option value="">-- Pilih Fungsi --</option>
-                  {Array.isArray(fungsiList) && funzioneList.map((f) => (
+                  {Array.isArray(fungsiList) && fungsiList.map((f) => (
                     <option key={f} value={f}>{f}</option>
                   ))}
                 </select>
