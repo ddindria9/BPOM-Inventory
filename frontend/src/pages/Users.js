@@ -35,7 +35,8 @@ export default function Users() {
       const { data } = await api.get("/users");
       setUsers(Array.isArray(data) ? data : []);
     } catch (e) {
-      toast.error("Gagal memuat daftar pengguna");
+      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal memuat daftar pengguna" : "Gagal memuat daftar pengguna";
+      toast.error(errorMsg);
     } finally {
       setLoading(false);
     }
@@ -84,7 +85,7 @@ export default function Users() {
       });
       loadUsers();
     } catch (e) {
-      const errorMsg = e?.response?.data?.detail || e?.message || "Gagal menambahkan user";
+      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal menambahkan user" : "Gagal menambahkan user";
       toast.error(errorMsg);
     }
   };
@@ -96,7 +97,8 @@ export default function Users() {
       toast.success("User dihapus");
       loadUsers();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Gagal menghapus user");
+      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal menghapus user" : "Gagal menghapus user";
+      toast.error(errorMsg);
     }
   };
 
@@ -119,6 +121,7 @@ export default function Users() {
   };
 
   const handleUpdate = async () => {
+    if (!editUser) return;
     try {
       const payload = {
         name: editUser.name,
@@ -132,7 +135,8 @@ export default function Users() {
       setShowEditModal(false);
       loadUsers();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Gagal memperbarui user");
+      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal memperbarui user" : "Gagal memperbarui user";
+      toast.error(errorMsg);
     }
   };
 
