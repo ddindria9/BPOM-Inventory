@@ -10,11 +10,11 @@ export default function Perencanaan() {
   const loadItems = async () => {
     try {
       const { data } = await api.get("/perencanaan");
-      // Pastikan data adalah array, jika bukan beri []
+      // Pastikan data adalah array
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       toast.error("Gagal memuat data perencanaan");
-      setItems([]); // fallback kosong
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -71,7 +71,6 @@ export default function Perencanaan() {
                     <td className="text-right font-semibold text-red-600">{item.stok}</td>
                     <td>{item.expiry_date || "-"}</td>
                     <td>
-                      {/* Tampilkan satu status saja */}
                       {item.status === "expiring_soon" ? (
                         <span className="text-xs text-red-600 font-semibold">⚠️ Kadaluarsa</span>
                       ) : (
