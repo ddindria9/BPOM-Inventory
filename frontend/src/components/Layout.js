@@ -3,7 +3,8 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import {
   LayoutDashboard, Package, TruckIcon, FileText, CheckSquare,
-  Printer, History, Box, ClipboardList, UsersRound, LogOut, Menu, X, Settings as SettingsIcon
+  Printer, History, Box, ClipboardList, UsersRound, LogOut, Menu, X, Settings as SettingsIcon,
+  CalendarClock 
 } from "lucide-react";
 
 const NAV = [
@@ -15,6 +16,7 @@ const NAV = [
   { to: "/stock-card", label: "Kartu Stok", icon: History },
   { to: "/assets", label: "Aset & QR", icon: Box },
   { to: "/reports", label: "Laporan", icon: ClipboardList },
+  { to: "/perencanaan", label: "Perencanaan", icon: CalendarClock }, 
   { to: "/users", label: "Pengguna", icon: UsersRound },
   { to: "/settings", label: "Pengaturan", icon: SettingsIcon },
 ];
