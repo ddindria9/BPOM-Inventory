@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api, BACKEND_URL } from "../lib/api"; // ← pastikan BACKEND_URL di-import
+import { api, BACKEND_URL } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
 
@@ -10,9 +10,11 @@ export default function Perencanaan() {
   const loadItems = async () => {
     try {
       const { data } = await api.get("/perencanaan");
-      setItems(data);
+      // Pastikan data adalah array, jika bukan beri []
+      setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       toast.error("Gagal memuat data perencanaan");
+      setItems([]); // fallback kosong
     } finally {
       setLoading(false);
     }
@@ -35,7 +37,7 @@ export default function Perencanaan() {
           </div>
         </div>
         <Button 
-          onClick={() => window.open(`${BACKEND_URL}/api/surat/perencanaan`, "_blank")} // ← pakai BACKEND_URL
+          onClick={() => window.open(`${BACKEND_URL}/api/surat/perencanaan`, "_blank")}
           className="bg-[#1E3A8A] hover:bg-[#1E2A6B]"
         >
           📄 Export ke Google Docs
@@ -56,25 +58,28 @@ export default function Perencanaan() {
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
-                <tr key={item.id} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-mono-data text-xs">{item.kode}</td>
-                  <td className="font-medium">{item.nama}</td>
-                  <td>{item.satuan}</td>
-                  <td className="text-right font-semibold text-red-600">{item.stok}</td>
-                  <td>{item.expiry_date || "-"}</td>
-                  <td>
-                    {item.status === "expiring_soon" && (
-                      <span className="text-xs text-red-600 font-semibold">⚠️ Kadaluarsa</span>
-                    )}
-                    <span className="text-xs text-amber-600">Stok Menipis</span>
-                  </td>
-                </tr>
-              ))}
-              {items.length === 0 && (
+              {items.length === 0 ? (
                 <tr><td colSpan={6} className="p-6 text-center text-slate-400">
-                   Semua barang dalam kondisi stok aman.
+                  Semua barang dalam kondisi stok aman.
                 </td></tr>
+              ) : (
+                items.map((item) => (
+                  <tr key={item.id} className="border-t border-slate-100">
+                    <td className="px-4 py-2 font-mono-data text-xs">{item.kode}</td>
+                    <td className="font-medium">{item.nama}</td>
+                    <td>{item.satuan}</td>
+                    <td className="text-right font-semibold text-red-600">{item.stok}</td>
+                    <td>{item.expiry_date || "-"}</td>
+                    <td>
+                      {/* Tampilkan satu status saja */}
+                      {item.status === "expiring_soon" ? (
+                        <span className="text-xs text-red-600 font-semibold">⚠️ Kadaluarsa</span>
+                      ) : (
+                        <span className="text-xs text-amber-600">Stok Menipis</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
