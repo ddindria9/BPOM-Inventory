@@ -862,8 +862,8 @@ async def get_settings(user=Depends(get_current_user)):
     s = await db.settings.find_one({"key": SETTINGS_KEY}, {"_id": 0}) or {}
     return {
         "spb_template_doc_id": s.get("spb_template_doc_id", ""),
-        "sbbk_template_doc_id": s.get("sbbk_template_doc_id", 
-        "perencanaan_template_doc_id": s.get("perencanaan_template_doc_id", ""),  # tambahkan
+        "sbbk_template_doc_id": s.get("sbbk_template_doc_id", ""), 
+        "perencanaan_template_doc_id": s.get("perencanaan_template_doc_id", ""), 
     }
 
 class SettingsIn(BaseModel):
