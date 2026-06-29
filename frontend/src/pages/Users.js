@@ -3,7 +3,14 @@ import { api, fmtDate } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "../components/ui/dialog";
 import { Eye, EyeOff, Pencil, User } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,7 +42,10 @@ export default function Users() {
       const { data } = await api.get("/users");
       setUsers(Array.isArray(data) ? data : []);
     } catch (e) {
-      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal memuat daftar pengguna" : "Gagal memuat daftar pengguna";
+      const errorMsg =
+        typeof e === "object"
+          ? e?.response?.data?.detail || e?.message || "Gagal memuat daftar pengguna"
+          : "Gagal memuat daftar pengguna";
       toast.error(errorMsg);
     } finally {
       setLoading(false);
@@ -85,7 +95,10 @@ export default function Users() {
       });
       loadUsers();
     } catch (e) {
-      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal menambahkan user" : "Gagal menambahkan user";
+      const errorMsg =
+        typeof e === "object"
+          ? e?.response?.data?.detail || e?.message || "Gagal menambahkan user"
+          : "Gagal menambahkan user";
       toast.error(errorMsg);
     }
   };
@@ -97,7 +110,10 @@ export default function Users() {
       toast.success("User dihapus");
       loadUsers();
     } catch (e) {
-      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal menghapus user" : "Gagal menghapus user";
+      const errorMsg =
+        typeof e === "object"
+          ? e?.response?.data?.detail || e?.message || "Gagal menghapus user"
+          : "Gagal menghapus user";
       toast.error(errorMsg);
     }
   };
@@ -135,7 +151,10 @@ export default function Users() {
       setShowEditModal(false);
       loadUsers();
     } catch (e) {
-      const errorMsg = typeof e === "object" ? e?.response?.data?.detail || e?.message || "Gagal memperbarui user" : "Gagal memperbarui user";
+      const errorMsg =
+        typeof e === "object"
+          ? e?.response?.data?.detail || e?.message || "Gagal memperbarui user"
+          : "Gagal memperbarui user";
       toast.error(errorMsg);
     }
   };
@@ -178,40 +197,41 @@ export default function Users() {
               </tr>
             </thead>
             <tbody>
-              {Array.isArray(users) && users.map((u) => (
-                <tr key={u.user_id} className="border-t border-slate-100">
-                  <td className="px-4 py-2 font-medium">{u.name || "-"}</td>
-                  <td className="font-mono-data text-xs">{u.username || "-"}</td>
-                  <td>{u.unit_kerja || "-"}</td>
-                  <td>{u.jabatan || "staff"}</td>
-                  <td>
-                    <span className="capitalize">{u.role || "-"}</span>
-                  </td>
-                  <td>{u.created_at ? fmtDate(u.created_at) : "-"}</td>
-                  <td className="text-right pr-4 space-x-2">
-                    <button
-                      onClick={() => handleView(u)}
-                      className="text-blue-600 hover:underline text-xs"
-                      title="Lihat detail"
-                    >
-                      <User className="w-4 h-4 inline" /> Lihat
-                    </button>
-                    <button
-                      onClick={() => handleEdit(u)}
-                      className="text-amber-600 hover:underline text-xs"
-                      title="Edit"
-                    >
-                      <Pencil className="w-4 h-4 inline" /> Edit
-                    </button>
-                    <button
-                      onClick={() => handleDelete(u.user_id)}
-                      className="text-red-600 hover:underline text-xs"
-                    >
-                      Hapus
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {Array.isArray(users) &&
+                users.map((u) => (
+                  <tr key={u.user_id} className="border-t border-slate-100">
+                    <td className="px-4 py-2 font-medium">{u.name || "-"}</td>
+                    <td className="font-mono-data text-xs">{u.username || "-"}</td>
+                    <td>{u.unit_kerja || "-"}</td>
+                    <td>{u.jabatan || "staff"}</td>
+                    <td>
+                      <span className="capitalize">{u.role || "-"}</span>
+                    </td>
+                    <td>{u.created_at ? fmtDate(u.created_at) : "-"}</td>
+                    <td className="text-right pr-4 space-x-2">
+                      <button
+                        onClick={() => handleView(u)}
+                        className="text-blue-600 hover:underline text-xs"
+                        title="Lihat detail"
+                      >
+                        <User className="w-4 h-4 inline" /> Lihat
+                      </button>
+                      <button
+                        onClick={() => handleEdit(u)}
+                        className="text-amber-600 hover:underline text-xs"
+                        title="Edit"
+                      >
+                        <Pencil className="w-4 h-4 inline" /> Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(u.user_id)}
+                        className="text-red-600 hover:underline text-xs"
+                      >
+                        Hapus
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               {(!Array.isArray(users) || users.length === 0) && (
                 <tr>
                   <td colSpan={7} className="p-6 text-center text-slate-400">
@@ -229,6 +249,9 @@ export default function Users() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Tambah Pengguna Baru</DialogTitle>
+            <DialogDescription>
+              Isi data pengguna baru. Field dengan tanda * wajib diisi.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-3">
             <div>
@@ -282,9 +305,12 @@ export default function Users() {
                 className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
               >
                 <option value="">-- Pilih Fungsi --</option>
-                {Array.isArray(fungsiList) && fungsiList.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
+                {Array.isArray(fungsiList) &&
+                  fungsiList.map((f) => (
+                    <option key={f} value={f}>
+                      {f}
+                    </option>
+                  ))}
               </select>
             </div>
             <div>
@@ -335,16 +361,40 @@ export default function Users() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Detail Pengguna</DialogTitle>
+            <DialogDescription>Informasi lengkap pengguna.</DialogDescription>
           </DialogHeader>
           {viewUser && (
             <div className="space-y-3 py-3">
-              <div><Label>Username</Label><div className="font-medium">{viewUser.username || "-"}</div></div>
-              <div><Label>Nama Lengkap</Label><div className="font-medium">{viewUser.name || "-"}</div></div>
-              <div><Label>NIP</Label><div className="font-medium">{viewUser.nip || "-"}</div></div>
-              <div><Label>Fungsi</Label><div className="font-medium">{viewUser.unit_kerja || "-"}</div></div>
-              <div><Label>Jabatan</Label><div className="font-medium">{viewUser.jabatan || "staff"}</div></div>
-              <div><Label>Peran</Label><div className="font-medium capitalize">{viewUser.role || "-"}</div></div>
-              <div><Label>Terdaftar Sejak</Label><div className="font-medium">{viewUser.created_at ? fmtDate(viewUser.created_at) : "-"}</div></div>
+              <div>
+                <Label>Username</Label>
+                <div className="font-medium">{viewUser.username || "-"}</div>
+              </div>
+              <div>
+                <Label>Nama Lengkap</Label>
+                <div className="font-medium">{viewUser.name || "-"}</div>
+              </div>
+              <div>
+                <Label>NIP</Label>
+                <div className="font-medium">{viewUser.nip || "-"}</div>
+              </div>
+              <div>
+                <Label>Fungsi</Label>
+                <div className="font-medium">{viewUser.unit_kerja || "-"}</div>
+              </div>
+              <div>
+                <Label>Jabatan</Label>
+                <div className="font-medium">{viewUser.jabatan || "staff"}</div>
+              </div>
+              <div>
+                <Label>Peran</Label>
+                <div className="font-medium capitalize">{viewUser.role || "-"}</div>
+              </div>
+              <div>
+                <Label>Terdaftar Sejak</Label>
+                <div className="font-medium">
+                  {viewUser.created_at ? fmtDate(viewUser.created_at) : "-"}
+                </div>
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -360,6 +410,7 @@ export default function Users() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Pengguna</DialogTitle>
+            <DialogDescription>Ubah data pengguna yang dipilih.</DialogDescription>
           </DialogHeader>
           {editUser && (
             <div className="space-y-3 py-3">
@@ -391,9 +442,12 @@ export default function Users() {
                   className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
                 >
                   <option value="">-- Pilih Fungsi --</option>
-                  {Array.isArray(fungsiList) && fungsiList.map((f) => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
+                  {Array.isArray(fungsiList) &&
+                    fungsiList.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
                 </select>
               </div>
               <div>
