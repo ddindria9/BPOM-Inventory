@@ -21,7 +21,9 @@ import SPBList from "./pages/SPBList";
 import Settings from "./pages/Settings";
 import Layout from "./components/Layout";
 import Perencanaan from "./pages/Perencanaan";
+import ErrorBoundary from "./components/ErrorBoundary";
 
+// --- Protected route wrapper ---
 function Protected({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="min-h-screen flex items-center justify-center text-slate-500">Memuat...</div>;
@@ -29,14 +31,13 @@ function Protected({ children }) {
   return <Layout>{children}</Layout>;
 }
 
+// --- Main router component ---
 function AppRouter() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
 
-  if (
-    params.has("token") ||
-    location.hash?.includes("session_id=")
-  ) {
+  // AuthCallback handling (for legacy OAuth token flow)
+  if (params.has("token") || location.hash?.includes("session_id=")) {
     return <AuthCallback />;
   }
 
@@ -44,12 +45,12 @@ function AppRouter() {
     <Routes>
       <Route path="/login" element={<Login />} />
 
-      {/* Public routes */}
+      {/* Public routes (no login required) */}
       <Route path="/spb-public" element={<SPBPublic />} />
       <Route path="/asset-inspect/:id" element={<AssetInspect />} />
       <Route path="/surat/:type/:id" element={<SuratPreview />} />
 
-      {/* Protected app */}
+      {/* Protected app routes */}
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
       <Route path="/master" element={<Protected><MasterData /></Protected>} />
@@ -59,24 +60,25 @@ function AppRouter() {
       <Route path="/stock-card" element={<Protected><StockCard /></Protected>} />
       <Route path="/assets" element={<Protected><Assets /></Protected>} />
       <Route path="/reports" element={<Protected><Reports /></Protected>} />
-      <Route path="/perencanaan" element={<Layout><Perencanaan /></Layout>} />
+      <Route path="/perencanaan" element={<Protected><Perencanaan /></Protected>} />
       <Route path="/users" element={<Protected><Users /></Protected>} />
       <Route path="/settings" element={<Protected><Settings /></Protected>} />
-        
-      {/* Optional fallback */}
+
+      {/* Fallback */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }
 
+// --- Main App component ---
 export default function App() {
+  // Remove Emergent watermark (if any)
   useEffect(() => {
-    // Hide Emergent platform watermark/badge on every render
     const stripBadge = () => {
       const candidates = document.querySelectorAll('a, button, div');
       candidates.forEach((el) => {
         const t = (el.textContent || '').trim();
-        if (t === 'Made with Emergent' || /Made with Emergent/i.test(t) && el.offsetParent && el.children.length < 6) {
+        if (t === 'Made with Emergent' || (/Made with Emergent/i.test(t) && el.offsetParent && el.children.length < 6)) {
           el.style.setProperty('display', 'none', 'important');
         }
       });
@@ -91,7 +93,10 @@ export default function App() {
     <div className="App">
       <BrowserRouter>
         <AuthProvider>
-          <AppRouter />
+          {/* ErrorBoundary menangkap error di seluruh aplikasi */}
+          <ErrorBoundary>
+            <AppRouter />
+          </ErrorBoundary>
           <Toaster position="top-right" richColors />
         </AuthProvider>
       </BrowserRouter>
