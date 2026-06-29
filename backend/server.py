@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 import qrcode
 import jwt
 # import httpx
-import bcrypt  # <-- TAMBAHKAN INI
+import bcrypt  # 
 import requests
 import base64
 
@@ -493,9 +493,9 @@ async def list_incoming(user=Depends(get_current_user)):
 # -------------------- SPB Requests --------------------
 class SPBLine(BaseModel):
     item_id: str
-    jumlah: int          # ini adalah permintaan
-    disetujui: Optional[int] = None   # jumlah yang disetujui (diisi saat approval)
-    keterangan: Optional[str] = None  # keterangan dari approval
+    jumlah: int          # permintaan awal
+    disetujui: Optional[int] = None   # diisi saat approval final
+    keterangan: Optional[str] = None  # alasan dari approval final
     keperluan: str = ""
 
 class ApprovalLine(BaseModel):
@@ -504,16 +504,16 @@ class ApprovalLine(BaseModel):
     keterangan: str = ""
 
 class ApprovalAction(BaseModel):
-    action: str
+    action: str          # "APPROVE" atau "REJECT"
     paraf: str = ""
     alasan: str = ""
-    lines: List[ApprovalLine] = []   # daftar penyesuaian per barang
+    lines: List[ApprovalLine] = []   # untuk approval final
 
 class SPBIn(BaseModel):
     nama_pegawai: str
     nip_pegawai: str = "" 
     unit_kerja: str
-    jabatan_peminta: str = ""  # tambahkan
+    jabatan: str = ""   # staff / kepala_fungsi
     keperluan: str = ""
     lines: List[SPBLine]
 
@@ -532,15 +532,27 @@ async def create_spb(body: SPBIn):
         "nama_pegawai": body.nama_pegawai,
         "nip_pegawai": body.nip_pegawai,
         "unit_kerja": body.unit_kerja,
-        "jabatan_peminta": body.jabatan_peminta,  # tambahkan
+        "jabatan": body.jabatan,
         "keperluan": body.keperluan,
         "lines": [l.model_dump() for l in body.lines],
         "status": "PENDING",
+        # Kepala Fungsi
+        "kf_approver_id": None,
+        "kf_approver_name": None,
+        "kf_approver_nip": None,
+        "kf_approver_jabatan": None,
+        "kf_approver_paraf": None,
+        "kf_approved_at": None,
+        "qr_kf": None,
+        # Approver Final
         "approver_id": None,
         "approver_name": None,
-        "approver_nip": None,  # tambahkan untuk menyimpan NIP Kepala Fungsi
+        "approver_nip": None,
+        "approver_jabatan": None,
         "approver_paraf": None,
         "approved_at": None,
+        "qr_approver": None,
+        "sbbk_nomor": None,
         "alasan_tolak": None,
         "created_at": iso(now_utc()),
     }
@@ -562,103 +574,171 @@ async def get_spb(spb_id: str):
         raise HTTPException(404, "SPB not found")
     return doc
 
+def _generate_qr_with_logo(data: str) -> str:
+    """Generate QR code dengan logo BPOM di tengah, return base64 string."""
+    import qrcode
+    from qrcode.image.styledpil import StyledPilImage
+    from qrcode.image.styles.moduledrawers import RoundedModuleDrawer
+    from PIL import Image, ImageDraw, ImageFont
+    import io
+    import base64
+
+    qr = qrcode.QRCode(box_size=6, border=2)
+    qr.add_data(data)
+    qr.make(fit=True)
+    img = qr.make_image(image_factory=StyledPilImage, module_drawer=RoundedModuleDrawer())
+
+    # Buat logo BPOM (lingkaran biru dengan teks)
+    logo = Image.new("RGBA", (80, 80), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(logo)
+    draw.ellipse((0, 0, 80, 80), fill=(30, 58, 138, 255), outline=(255, 255, 255, 5))
+    try:
+        font = ImageFont.truetype("arial.ttf", 16)
+    except:
+        font = ImageFont.load_default()
+    draw.text((18, 30), "BPOM", fill="white", font=font)
+
+    logo = logo.resize((80, 80))
+    img_w, img_h = img.size
+    pos = ((img_w - 80) // 2, (img_h - 80) // 2)
+    img.paste(logo, pos, logo)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
+
 @api.post("/spb/{spb_id}/action")
-async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(require_role("approver", "admin"))):
+async def spb_action(spb_id: str, body: ApprovalAction, user=Depends(get_current_user)):
     spb = await db.spb.find_one({"id": spb_id}, {"_id": 0})
     if not spb:
         raise HTTPException(404, "SPB not found")
-    if spb["status"] != "PENDING":
-        raise HTTPException(400, "SPB already processed")
+    
+    if spb["status"] in ["APPROVED", "REJECTED"]:
+        raise HTTPException(400, "SPB sudah diproses")
+    
     if body.action == "APPROVE":
-        # Validasi jabatan
-        if user.get("jabatan") != "kepala_fungsi":
-            raise HTTPException(403, "Hanya Kepala Fungsi yang dapat menyetujui")
-        # Generate QR Code dari NIP Kepala Fungsi
-        qr_data = f"{FRONTEND_URL}/approval/{spb_id}?nip={user.get('nip')}"
-        qr_img = qrcode.make(qr_data)
-        qr_buffer = io.BytesIO()
-        qr_img.save(qr_buffer, format="PNG")
-        qr_base64 = base64.b64encode(qr_buffer.getvalue()).decode()
-        
-        # Simpan QR ke SPB
-        await db.spb.update_one(
-            {"id": spb_id},
-            {"$set": {"approver_qr": qr_base64}}
-        )
-        # Update setiap line dengan disetujui dan keterangan
-        for line_update in body.lines:
-            for idx, line in enumerate(spb["lines"]):
-                if line["item_id"] == line_update.item_id:
-                    # Set disetujui dan keterangan
-                    spb["lines"][idx]["disetujui"] = line_update.disetujui
-                    spb["lines"][idx]["keterangan"] = line_update.keterangan
-                    break
-        
-        # Simpan perubahan ke database (sebelum melanjutkan)
-        await db.spb.update_one(
-            {"id": spb_id},
-            {"$set": {"lines": spb["lines"]}}
-        )
-        sbbk_count = await db.sbbk.count_documents({})
-        sbbk_nomor = gen_nomor_surat("SBBK", sbbk_count + 1)
-        applied_items = []
-        inserted_movements = []
-        sbbk_id = f"sbbk_{uuid.uuid4().hex[:10]}"
-        try:
-            for l in spb["lines"]:
-                qty = l.get("disetujui", l["jumlah"])  # gunakan disetujui jika ada
-                await db.items.update_one({"id": l["item_id"]}, {"$inc": {"stok": -qty}})
-                applied_items.append((l["item_id"], l["jumlah"]))
-                mv_id = f"mv_{uuid.uuid4().hex[:10]}"
-                await db.movements.insert_one({
-                    "id": mv_id,
-                    "item_id": l["item_id"],
-                    "tipe": "KELUAR",
-                    "ref": sbbk_nomor,
-                    "jumlah": l["jumlah"],
-                    "harga": 0,
-                    "tanggal": now_utc().strftime("%Y-%m-%d"),
-                    "created_at": iso(now_utc()),
-                })
-                inserted_movements.append(mv_id)
-            sbbk = {
-                "id": sbbk_id,
-                "nomor": sbbk_nomor,
-                "spb_id": spb_id,
-                "spb_nomor": spb["nomor"],
-                "nama_penerima": spb["nama_pegawai"],
-                "unit_kerja": spb["unit_kerja"],
-                "lines": spb["lines"],
-                "created_at": iso(now_utc()),
-            }
-            await db.sbbk.insert_one(sbbk)
+        # ===== TAHAP 1: Kepala Fungsi =====
+        if spb["status"] == "PENDING":
+            if user.get("jabatan") != "kepala_fungsi":
+                raise HTTPException(403, "Hanya Kepala Fungsi yang dapat menyetujui tahap pertama")
+            
+            qr_data = f"{FRONTEND_URL}/approval/{spb_id}?nip={user.get('nip')}"
+            qr_base64 = _generate_qr_with_logo(qr_data)
+            
             await db.spb.update_one({"id": spb_id}, {"$set": {
-                "status": "APPROVED",
+                "status": "APPROVED_KF",
+                "kf_approver_id": user["user_id"],
+                "kf_approver_name": user["name"],
+                "kf_approver_nip": user.get("nip", ""),
+                "kf_approver_jabatan": user.get("jabatan", ""),
+                "kf_approver_paraf": body.paraf,
+                "kf_approved_at": iso(now_utc()),
+                "qr_kf": qr_base64,
+            }})
+            return {"message": "Disetujui oleh Kepala Fungsi, menunggu approval final"}
+        
+        # ===== TAHAP 2: Approval Final =====
+        elif spb["status"] == "APPROVED_KF":
+            is_approver = user.get("role") in ["approver", "admin"]
+            is_kepala_bpom = user.get("jabatan") == "kepala_bpom"
+            if not (is_approver or is_kepala_bpom):
+                raise HTTPException(403, "Hanya Approver / Kepala BPOM yang dapat melakukan approval final")
+            
+            # Update lines dengan disetujui & keterangan
+            for line_update in body.lines:
+                for idx, line in enumerate(spb["lines"]):
+                    if line["item_id"] == line_update.item_id:
+                        spb["lines"][idx]["disetujui"] = line_update.disetujui
+                        spb["lines"][idx]["keterangan"] = line_update.keterangan
+                        break
+            await db.spb.update_one({"id": spb_id}, {"$set": {"lines": spb["lines"]}})
+            
+            # QR Approver
+            qr_data = f"{FRONTEND_URL}/approval/{spb_id}?approver={user.get('nip')}"
+            qr_base64 = _generate_qr_with_logo(qr_data)
+            
+            # SBBK & kurangi stok
+            sbbk_count = await db.sbbk.count_documents({})
+            sbbk_nomor = gen_nomor_surat("SBBK", sbbk_count + 1)
+            applied_items = []
+            inserted_movements = []
+            sbbk_id = f"sbbk_{uuid.uuid4().hex[:10]}"
+            try:
+                for l in spb["lines"]:
+                    qty = l.get("disetujui", l["jumlah"])
+                    if qty > 0:
+                        await db.items.update_one({"id": l["item_id"]}, {"$inc": {"stok": -qty}})
+                        applied_items.append((l["item_id"], qty))
+                        mv_id = f"mv_{uuid.uuid4().hex[:10]}"
+                        await db.movements.insert_one({
+                            "id": mv_id,
+                            "item_id": l["item_id"],
+                            "tipe": "KELUAR",
+                            "ref": sbbk_nomor,
+                            "jumlah": qty,
+                            "harga": 0,
+                            "tanggal": now_utc().strftime("%Y-%m-%d"),
+                            "created_at": iso(now_utc()),
+                        })
+                        inserted_movements.append(mv_id)
+                sbbk = {
+                    "id": sbbk_id,
+                    "nomor": sbbk_nomor,
+                    "spb_id": spb_id,
+                    "spb_nomor": spb["nomor"],
+                    "nama_penerima": spb["nama_pegawai"],
+                    "unit_kerja": spb["unit_kerja"],
+                    "lines": spb["lines"],
+                    "created_at": iso(now_utc()),
+                }
+                await db.sbbk.insert_one(sbbk)
+                await db.spb.update_one({"id": spb_id}, {"$set": {
+                    "status": "APPROVED",
+                    "approver_id": user["user_id"],
+                    "approver_name": user["name"],
+                    "approver_nip": user.get("nip", ""),
+                    "approver_jabatan": user.get("jabatan", ""),
+                    "approver_paraf": body.paraf,
+                    "approved_at": iso(now_utc()),
+                    "sbbk_nomor": sbbk_nomor,
+                    "qr_approver": qr_base64,
+                }})
+                return {"message": "SPB disetujui final, SBBK telah diterbitkan"}
+            except Exception as e:
+                for iid, qty in applied_items:
+                    await db.items.update_one({"id": iid}, {"$inc": {"stok": qty}})
+                if inserted_movements:
+                    await db.movements.delete_many({"id": {"$in": inserted_movements}})
+                await db.sbbk.delete_one({"id": sbbk_id})
+                log.error(f"Approval final rollback for SPB {spb_id}: {e}")
+                raise HTTPException(500, f"Approval final gagal, perubahan dibatalkan: {e}")
+        else:
+            raise HTTPException(400, "Status SPB tidak valid")
+    else:
+        # REJECT
+        if spb["status"] == "PENDING":
+            await db.spb.update_one({"id": spb_id}, {"$set": {
+                "status": "REJECTED",
+                "kf_approver_id": user["user_id"],
+                "kf_approver_name": user["name"],
+                "kf_approved_at": iso(now_utc()),
+                "alasan_tolak": body.alasan,
+            }})
+        elif spb["status"] == "APPROVED_KF":
+            await db.spb.update_one({"id": spb_id}, {"$set": {
+                "status": "REJECTED",
                 "approver_id": user["user_id"],
                 "approver_name": user["name"],
-                "approver_nip": user.get("nip", ""),  # tambahkan ini
-                "approver_paraf": body.paraf,
                 "approved_at": iso(now_utc()),
-                "sbbk_nomor": sbbk_nomor,
+                "alasan_tolak": body.alasan,
             }})
-        except Exception as e:
-            for iid, qty in applied_items:
-                await db.items.update_one({"id": iid}, {"$inc": {"stok": qty}})
-            if inserted_movements:
-                await db.movements.delete_many({"id": {"$in": inserted_movements}})
-            await db.sbbk.delete_one({"id": sbbk_id})
-            log.error(f"Approval rollback for SPB {spb_id}: {e}")
-            raise HTTPException(500, f"Approval gagal, perubahan dibatalkan: {e}")
-    else:
-        await db.spb.update_one({"id": spb_id}, {"$set": {
-            "status": "REJECTED",
-            "approver_id": user["user_id"],
-            "approver_name": user["name"],
-            "approved_at": iso(now_utc()),
-            "alasan_tolak": body.alasan,
-        }})
+        else:
+            raise HTTPException(400, "Status tidak valid untuk penolakan")
+        return {"message": "SPB ditolak"}
+    
     return await db.spb.find_one({"id": spb_id}, {"_id": 0})
 
+# -------------------- SBBK (Surat Bukti Barang Keluar) --------------------
 @api.get("/sbbk/{sbbk_id}")
 async def get_sbbk(sbbk_id: str, user=Depends(get_current_user)):
     doc = await db.sbbk.find_one({"id": sbbk_id}, {"_id": 0})
@@ -670,7 +750,7 @@ async def get_sbbk(sbbk_id: str, user=Depends(get_current_user)):
 async def list_sbbk(user=Depends(get_current_user)):
     docs = await db.sbbk.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)
     return docs
-
+    
 # -------------------- Perencanaan ---------------
 @api.get("/perencanaan")
 async def get_perencanaan(user=Depends(get_current_user)):
@@ -1096,9 +1176,9 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
             "kode": it.get("kode", ""),
             "nama": it.get("nama", l["item_id"]),
             "satuan": it.get("satuan", ""),
-            "permintaan": l["jumlah"],                     # jumlah yang diminta
-            "disetujui": l.get("disetujui", l["jumlah"]),  # jumlah yang disetujui (default = permintaan)
-            "keterangan": l.get("keterangan", ""),         # keterangan dari approval
+            "permintaan": l["jumlah"],
+            "disetujui": l.get("disetujui", l["jumlah"]),
+            "keterangan": l.get("keterangan", ""),
             "keperluan": l.get("keperluan", "") or spb.get("keperluan", ""),
             "harga": it.get("harga", 0),
         })
@@ -1113,7 +1193,7 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "unit_kerja": spb.get("unit_kerja", ""),
         "nama_pegawai": spb.get("nama_pegawai", ""),
         "nip_pegawai": spb.get("nip_pegawai", ""),
-        "nama_penerima": spb.get("nama_pegawai", ""),
+        "jabatan": spb.get("jabatan", ""),
         "tanggal_permintaan": _fmt_tanggal(spb.get("created_at", "")),
         "tanggal": _fmt_tanggal(spb.get("created_at", "")),
         "tanggal_spb": _fmt_tanggal(spb.get("created_at", "")),
@@ -1122,20 +1202,29 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "tempat_tanggal": place_date,
         "keperluan": spb.get("keperluan", ""),
         "status": spb.get("status", ""),
+        # Kepala Fungsi
+        "kf_name": spb.get("kf_approver_name", ""),
+        "kf_nip": spb.get("kf_approver_nip", ""),
+        "kf_jabatan": spb.get("kf_approver_jabatan", ""),
+        "kf_paraf": spb.get("kf_approver_paraf", ""),
+        "qr_kf": spb.get("qr_kf", ""),
+        # Approver Final
         "approver_name": spb.get("approver_name", ""),
-        "nama_pejabat": spb.get("approver_name", ""),
+        "approver_nip": spb.get("approver_nip", ""),
+        "approver_jabatan": spb.get("approver_jabatan", ""),
         "approver_paraf": spb.get("approver_paraf", ""),
+        "qr_approver": spb.get("qr_approver", ""),
+        # fallback (kompatibilitas lama)
+        "nama_pejabat": spb.get("approver_name", "") or spb.get("kf_approver_name", ""),
+        "nip_pejabat": spb.get("approver_nip", "") or spb.get("kf_approver_nip", ""),
+        "approver_paraf": spb.get("approver_paraf", "") or spb.get("kf_approver_paraf", ""),
+        "nama_penerima": spb.get("nama_pegawai", ""),
+        "nip_penerima": spb.get("nip_pegawai", ""),
         "nama_pengelola": "",
         "nip_pengelola": "",
-        "nip_pegawai": "",
-        "nip_pejabat": "",
-        "nip_penerima": "",
-        "nama_kepala_fungsi": spb.get("approver_name", ""),
-        "nip_kepala_fungsi": spb.get("approver_nip", ""),
-        "approver_qr": spb.get("approver_qr", ""),  # QR code dalam base64
     }
     return ctx, rows
-
+    
 @api.get("/surat/render/{type}/{spb_id}")
 async def render_surat(type: str, spb_id: str, user=Depends(get_current_user)):
     if type not in ("spb", "sbbk"):
