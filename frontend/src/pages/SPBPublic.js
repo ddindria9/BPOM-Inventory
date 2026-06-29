@@ -27,6 +27,11 @@ export default function SPBPublic() {
     }
   }, [authLoading, user, navigate]);
 
+  // Pastikan items selalu array
+  useEffect(() => {
+    setItems([]); // reset ke array kosong
+  }, []);
+  
   // Ambil daftar barang (hanya jika user sudah login)
   useEffect(() => {
     if (!user) return;
@@ -164,7 +169,7 @@ export default function SPBPublic() {
                     className="col-span-12 sm:col-span-6 h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
                   >
                     <option value="">-- Pilih barang --</option>
-                    {items.map(it => (
+                    {Array.isArray(items) && items.map(it => (
                       <option key={it.id} value={it.id}>
                         {it.kode} · {it.nama} ({it.satuan}) - Stok: {it.stok}
                       </option>
