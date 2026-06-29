@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { api, fmtIDR } from "../lib/api";
+import { api, fmtDate, fmtIDR } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { AlertTriangle, Box, Wallet, Clock, Inbox } from "lucide-react";
+import { AlertTriangle, Box, Wallet, Clock, Inbox, FileText, CheckCircle, XCircle, Clock as ClockIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -9,7 +10,6 @@ import { toast } from "sonner";
 const COLORS = { BAIK: "#1E3A8A", RUSAK_RINGAN: "#F59E0B", RUSAK_BERAT: "#DC2626" };
 
 function Stat({ icon: Icon, label, value, accent, testid }) {
-  // Pastikan value adalah number atau string, bukan objek
   const displayValue = (value === undefined || value === null) ? 0 : value;
   return (
     <div data-testid={testid} className="rise-in bg-white border border-slate-200 rounded-lg p-5 hover:-translate-y-0.5 transition-transform">
@@ -22,7 +22,7 @@ function Stat({ icon: Icon, label, value, accent, testid }) {
   );
 }
 
-// Komponen pembungkus chart dengan ErrorBoundary sederhana
+// Komponen pembungkus chart
 class ChartErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -33,19 +33,122 @@ class ChartErrorBoundary extends React.Component {
   }
   render() {
     if (this.state.hasError) {
-      return <div className="text-sm text-red-500 p-4">Gagal menampilkan chart. Periksa data.</div>;
+      return <div className="text-sm text-red-500 p-4">Gagal menampilkan chart.</div>;
     }
     return this.props.children;
   }
 }
 
-export default function Dashboard() {
+// ========== STAFF DASHBOARD ==========
+function StaffDashboard({ user }) {
+  const [spbList, setSpbList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data } = await api.get("/spb");
+        // Filter SPB milik user berdasarkan nama_pegawai atau nama_peminta
+        const mySpb = data.filter(
+          (spb) => spb.nama_pegawai === user.name || spb.nama_peminta === user.name
+        );
+        setSpbList(mySpb);
+      } catch (e) {
+        toast.error("Gagal memuat data SPB");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [user]);
+
+  if (loading) return <div className="text-slate-500">Memuat...</div>;
+
+  const pending = spbList.filter(s => s.status === "PENDING" || s.status === "APPROVED_KF");
+  const approved = spbList.filter(s => s.status === "APPROVED");
+  const rejected = spbList.filter(s => s.status === "REJECTED");
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Dashboard</div>
+        <h1 className="font-display text-3xl sm:text-4xl text-slate-900 mt-1">Selamat datang, {user?.name}</h1>
+        <div className="text-sm text-slate-500 mt-1">Berikut adalah status permintaan barang Anda.</div>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Stat icon={Inbox} label="Menunggu Persetujuan" value={pending.length} accent="text-amber-500" />
+        <Stat icon={CheckCircle} label="Disetujui" value={approved.length} accent="text-emerald-600" />
+        <Stat icon={XCircle} label="Ditolak" value={rejected.length} accent="text-red-600" />
+      </div>
+
+      {/* Daftar SPB */}
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-display text-lg">Riwayat Permintaan Anda</h3>
+          <Link to="/spb" className="text-xs text-[#1E3A8A] hover:underline">Lihat semua →</Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-xs uppercase tracking-wider text-slate-500 bg-slate-50">
+              <tr>
+                <th className="text-left px-4 py-3">Nomor</th>
+                <th className="text-left">Tanggal</th>
+                <th className="text-left">Status</th>
+                <th className="text-right pr-4">Surat</th>
+              </tr>
+            </thead>
+            <tbody>
+              {spbList.length === 0 ? (
+                <tr><td colSpan={4} className="p-6 text-center text-slate-400">Belum ada permintaan.</td></tr>
+              ) : (
+                spbList.slice(0, 10).map((d) => (
+                  <tr key={d.id} className="border-t border-slate-100">
+                    <td className="px-4 py-2 font-mono-data text-xs">{d.nomor}</td>
+                    <td>{fmtDate(d.created_at)}</td>
+                    <td>
+                      <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${
+                        d.status === "PENDING" ? "bg-amber-50 text-amber-700" :
+                        d.status === "APPROVED_KF" ? "bg-blue-50 text-blue-700" :
+                        d.status === "APPROVED" ? "bg-emerald-50 text-emerald-700" :
+                        "bg-red-50 text-red-700"
+                      }`}>
+                        {d.status === "APPROVED_KF" ? "DISETUJUI KF" : d.status}
+                      </span>
+                    </td>
+                    <td className="text-right pr-4">
+                      <Link to={`/surat/spb/${d.id}`} className="text-[#1E3A8A] hover:underline text-xs">
+                        <FileText className="w-4 h-4 inline" /> SPB
+                      </Link>
+                      {d.status === "APPROVED" && d.sbbk_nomor && (
+                        <Link to={`/surat/sbbk/${d.id}`} className="ml-2 text-[#1E3A8A] hover:underline text-xs">
+                          <FileText className="w-4 h-4 inline" /> SBBK
+                        </Link>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="text-xs text-slate-400 text-center">
+        Untuk membuat permintaan baru, buka menu <strong>Permintaan (SPB)</strong>.
+      </div>
+    </div>
+  );
+}
+
+// ========== FULL DASHBOARD (Admin & Lainnya) ==========
+function FullDashboard() {
   const [stats, setStats] = useState(null);
 
   const load = async () => {
     try {
       const { data } = await api.get("/dashboard/stats");
-      // Normalisasi data dengan fallback yang aman
       setStats({
         total_items: data.total_items ?? 0,
         low_stock_count: data.low_stock_count ?? 0,
@@ -80,7 +183,6 @@ export default function Dashboard() {
 
   if (!stats) return <div className="text-slate-500">Memuat...</div>;
 
-  // Data pie chart – aman karena sudah fallback
   const kondisiData = Object.entries(stats.kondisi_counts).map(([k, v]) => ({
     name: k.replace("_", " "),
     value: typeof v === 'number' ? v : 0,
@@ -110,7 +212,6 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Low stock list */}
         <div className="bg-white border border-slate-200 rounded-lg p-5 lg:col-span-2">
           <div className="flex items-center justify-between">
             <h3 className="font-display text-lg">Stok di bawah minimum</h3>
@@ -139,7 +240,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Asset condition pie - dengan ErrorBoundary dan ResponsiveContainer yang dipastikan ukurannya */}
         <div className="bg-white border border-slate-200 rounded-lg p-5">
           <h3 className="font-display text-lg">Kondisi Aset</h3>
           <div className="text-xs text-slate-500">Total {totalAssets} aset</div>
@@ -163,7 +263,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Expiring */}
       <div className="bg-white border border-slate-200 rounded-lg p-5">
         <div className="flex items-center gap-2"><Clock className="w-4 h-4 text-red-600" /><h3 className="font-display text-lg">Reagen Mendekati Kadaluarsa</h3></div>
         {stats.expiring.length === 0 ? (
@@ -190,4 +289,17 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+// ========== MAIN DASHBOARD ==========
+export default function Dashboard() {
+  const { user } = useAuth();
+
+  // Staff hanya lihat dashboard miliknya
+  if (user?.role === "pegawai" && user?.jabatan === "staff") {
+    return <StaffDashboard user={user} />;
+  }
+
+  // Admin, approver, kepala fungsi, admin_gudang, pengelola_aset lihat full dashboard
+  return <FullDashboard />;
 }
