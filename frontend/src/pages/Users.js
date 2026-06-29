@@ -29,7 +29,6 @@ export default function Users() {
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
-  const [showEditPassword, setShowEditPassword] = useState(false);
 
   const loadUsers = async () => {
     try {
@@ -85,7 +84,9 @@ export default function Users() {
       });
       loadUsers();
     } catch (e) {
-      toast.error(e?.response?.data?.detail || "Gagal menambahkan user");
+      // Tangkap error dari response agar tidak jadi objek yang di-render
+      const errorMsg = e?.response?.data?.detail || e?.message || "Gagal menambahkan user";
+      toast.error(errorMsg);
     }
   };
 
@@ -222,7 +223,7 @@ export default function Users() {
 
       {/* ======== MODAL TAMBAH USER ======== */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-        <DialogContent aria-describedby="add-user-description">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Tambah Pengguna Baru</DialogTitle>
           </DialogHeader>
@@ -328,7 +329,7 @@ export default function Users() {
 
       {/* ======== MODAL LIHAT USER ======== */}
       <Dialog open={showViewModal} onOpenChange={setShowViewModal}>
-        <DialogContent aria-describedby="view-user-description">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Detail Pengguna</DialogTitle>
           </DialogHeader>
@@ -353,7 +354,7 @@ export default function Users() {
 
       {/* ======== MODAL EDIT USER ======== */}
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
-        <DialogContent aria-describedby="edit-user-description">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Pengguna</DialogTitle>
           </DialogHeader>
@@ -387,7 +388,7 @@ export default function Users() {
                   className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
                 >
                   <option value="">-- Pilih Fungsi --</option>
-                  {Array.isArray(fungsiList) && fungsiList.map((f) => (
+                  {Array.isArray(fungsiList) && funzioneList.map((f) => (
                     <option key={f} value={f}>{f}</option>
                   ))}
                 </select>
