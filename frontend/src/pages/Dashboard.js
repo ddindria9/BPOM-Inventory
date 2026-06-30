@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api, fmtDate, fmtIDR } from "../lib/api";
 import { useAuth } from "../contexts/AuthContext";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
-import { AlertTriangle, Box, Wallet, Clock, Inbox, FileText, CheckCircle, XCircle, Clock as ClockIcon } from "lucide-react";
+import { AlertTriangle, Box, Wallet, Clock, Inbox, FileText, CheckCircle, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { toast } from "sonner";
@@ -22,7 +22,6 @@ function Stat({ icon: Icon, label, value, accent, testid }) {
   );
 }
 
-// Komponen pembungkus chart
 class ChartErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -50,7 +49,7 @@ function StaffDashboard({ user }) {
         const { data } = await api.get("/spb");
         // Filter SPB milik user berdasarkan nama_pegawai atau nama_peminta
         const mySpb = data.filter(
-          (spb) => spb.nama_pegawai === user.name || spb.nama_peminta === user.name
+          (spb) => spb.nama_pegawai === user?.name || spb.nama_peminta === user?.name
         );
         setSpbList(mySpb);
       } catch (e) {
@@ -63,6 +62,7 @@ function StaffDashboard({ user }) {
   }, [user]);
 
   if (loading) return <div className="text-slate-500">Memuat...</div>;
+  if (!user) return <div className="text-slate-500">User tidak ditemukan.</div>;
 
   const pending = spbList.filter(s => s.status === "PENDING" || s.status === "APPROVED_KF");
   const approved = spbList.filter(s => s.status === "APPROVED");
@@ -72,18 +72,16 @@ function StaffDashboard({ user }) {
     <div className="space-y-6">
       <div>
         <div className="text-xs uppercase tracking-[0.2em] text-slate-500">Dashboard</div>
-        <h1 className="font-display text-3xl sm:text-4xl text-slate-900 mt-1">Selamat datang, {user?.name}</h1>
+        <h1 className="font-display text-3xl sm:text-4xl text-slate-900 mt-1">Selamat datang, {user?.name || "Pengguna"}</h1>
         <div className="text-sm text-slate-500 mt-1">Berikut adalah status permintaan barang Anda.</div>
       </div>
 
-      {/* Stat cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Stat icon={Inbox} label="Menunggu Persetujuan" value={pending.length} accent="text-amber-500" />
         <Stat icon={CheckCircle} label="Disetujui" value={approved.length} accent="text-emerald-600" />
         <Stat icon={XCircle} label="Ditolak" value={rejected.length} accent="text-red-600" />
       </div>
 
-      {/* Daftar SPB */}
       <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <h3 className="font-display text-lg">Riwayat Permintaan Anda</h3>
@@ -142,7 +140,7 @@ function StaffDashboard({ user }) {
   );
 }
 
-// ========== FULL DASHBOARD (Admin & Lainnya) ==========
+// ========== FULL DASHBOARD ==========
 function FullDashboard() {
   const [stats, setStats] = useState(null);
 
@@ -293,10 +291,20 @@ function FullDashboard() {
 
 // ========== MAIN DASHBOARD ==========
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
-  // Staff hanya lihat dashboard miliknya
-  if (user?.role === "pegawai" && user?.jabatan === "staff") {
+  // Jika masih loading auth, tampilkan loading
+  if (loading) {
+    return <div className="text-slate-500">Memuat...</div>;
+  }
+
+  // Jika user null (belum login), tidak mungkin terjadi karena Protected di App.js, tapi tetap guard
+  if (!user) {
+    return <div className="text-slate-500">Silakan login terlebih dahulu.</div>;
+  }
+
+  // Staff hanya lihat dashboard miliknya (pastikan user tidak null sebelum akses properti)
+  if (user.role === "pegawai" && user.jabatan === "staff") {
     return <StaffDashboard user={user} />;
   }
 
