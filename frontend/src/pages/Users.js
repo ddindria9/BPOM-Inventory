@@ -58,7 +58,7 @@ export default function Users() {
       const { data } = await api.get("/fungsi");
       setFungsiList(Array.isArray(data) ? data : []);
     } catch {
-      setFungsiList(["Pemeriksaan", "Penindakan", "Infokom", "Tata Usaha", "Pengujian"]);
+      setFungsiList(["Pemeriksaan", "Penindakan", "Informasi dan Komunikasi", "Tata Usaha", "Pengujian", "Informasi dan Komunikasi dan Pemeriksaan"]);
     }
   };
 
@@ -153,7 +153,6 @@ export default function Users() {
     return <div className="text-slate-500">Memuat...</div>;
   }
 
-  // Jika bukan admin, tampilkan pesan (redirect sudah terjadi di useEffect)
   if (user?.role !== "admin") {
     return <div className="text-red-500">Akses ditolak. Hanya admin.</div>;
   }
@@ -197,7 +196,9 @@ export default function Users() {
                   <td className="px-4 py-2 font-medium">{u.name || "-"}</td>
                   <td className="font-mono-data text-xs">{u.username || "-"}</td>
                   <td>{u.unit_kerja || "-"}</td>
-                  <td>{u.jabatan || "staff"}</td>
+                  <td>
+                    {u.jabatan_label || u.jabatan || "staff"}
+                  </td>
                   <td>
                     <span className="capitalize">{u.role || "-"}</span>
                   </td>
@@ -240,14 +241,13 @@ export default function Users() {
         </div>
       </div>
 
-      {/* Modal Tambah User */}
+      {/* ======== MODAL TAMBAH USER ======== */}
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Tambah Pengguna Baru</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-3">
-            {/* ... (sama seperti sebelumnya) ... */}
             <div>
               <Label>Username *</Label>
               <Input
@@ -348,7 +348,7 @@ export default function Users() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Lihat User */}
+      {/* ======== MODAL LIHAT USER ======== */}
       <Dialog open={showViewModal} onOpenChange={setShowViewModal}>
         <DialogContent>
           <DialogHeader><DialogTitle>Detail Pengguna</DialogTitle></DialogHeader>
@@ -358,7 +358,7 @@ export default function Users() {
               <div><Label>Nama Lengkap</Label><div className="font-medium">{viewUser.name || "-"}</div></div>
               <div><Label>NIP</Label><div className="font-medium">{viewUser.nip || "-"}</div></div>
               <div><Label>Fungsi</Label><div className="font-medium">{viewUser.unit_kerja || "-"}</div></div>
-              <div><Label>Jabatan</Label><div className="font-medium">{viewUser.jabatan || "staff"}</div></div>
+              <div><Label>Jabatan</Label><div className="font-medium">{viewUser.jabatan_label || viewUser.jabatan || "staff"}</div></div>
               <div><Label>Peran</Label><div className="font-medium capitalize">{viewUser.role || "-"}</div></div>
               <div><Label>Terdaftar Sejak</Label><div className="font-medium">{viewUser.created_at ? fmtDate(viewUser.created_at) : "-"}</div></div>
             </div>
@@ -367,7 +367,7 @@ export default function Users() {
         </DialogContent>
       </Dialog>
 
-      {/* Modal Edit User */}
+      {/* ======== MODAL EDIT USER ======== */}
       <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
         <DialogContent>
           <DialogHeader><DialogTitle>Edit Pengguna</DialogTitle></DialogHeader>
@@ -380,6 +380,9 @@ export default function Users() {
                 <select value={editUser.unit_kerja || ""} onChange={(e) => setEditUser({ ...editUser, unit_kerja: e.target.value })} className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white">
                   <option value="">-- Pilih Fungsi --</option>
                   {fungsiList.map((f) => <option key={f} value={f}>{f}</option>)}
+                  {editUser.unit_kerja && !fungsiList.includes(editUser.unit_kerja) && (
+                    <option value={editUser.unit_kerja}>{editUser.unit_kerja}</option>
+                  )}
                 </select>
               </div>
               <div><Label>Peran</Label>
@@ -397,6 +400,9 @@ export default function Users() {
                   <option value="kepala_fungsi">Kepala Fungsi</option>
                 </select>
                 {editUser.role !== "pegawai" && <p className="text-xs text-slate-400 mt-1">* Jabatan hanya untuk role Pegawai</p>}
+                {editUser.jabatan_label && (
+                  <p className="text-xs text-slate-500 mt-1">Label: {editUser.jabatan_label}</p>
+                )}
               </div>
             </div>
           )}
