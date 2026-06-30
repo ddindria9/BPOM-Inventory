@@ -17,12 +17,21 @@ export default function Approval() {
   const [lineAdjustments, setLineAdjustments] = useState({});
 
   const load = async () => {
-    const [s, i] = await Promise.all([
-      api.get("/spb", { params: { status: "PENDING" } }),
-      api.get("/items")
-    ]);
-    setPending(s.data);
-    setItems(i.data);
+    try {
+      // Ambil semua SPB, tanpa filter status
+      const [s, i] = await Promise.all([
+        api.get("/spb"), // tidak ada params status
+        api.get("/items")
+      ]);
+      // Filter: tampilkan yang status PENDING atau APPROVED_KF
+      const pendingList = s.data.filter(
+        item => item.status === "PENDING" || item.status === "APPROVED_KF"
+      );
+      setPending(pendingList);
+      setItems(i.data);
+    } catch (e) {
+      toast.error("Gagal memuat data approval");
+    }
   };
   useEffect(() => { load(); }, []);
 
@@ -54,7 +63,6 @@ export default function Approval() {
     if (!selected) return;
     if (action === "APPROVE") {
       if (!checkedApprove) return toast.error("Harap centang 'Saya menyetujui'");
-      // Jika perlu validasi lain
     }
     if (action === "REJECT" && !alasan) return toast.error("Isi alasan penolakan");
 
@@ -67,8 +75,8 @@ export default function Approval() {
 
       await api.post(`/spb/${selected.id}/action`, {
         action,
-        alasan: action === "REJECT" ? alasan : "", // alasan hanya untuk reject
-        paraf: "", // tidak digunakan
+        alasan: action === "REJECT" ? alasan : "",
+        paraf: "",
         lines: linesData
       });
 
@@ -81,6 +89,16 @@ export default function Approval() {
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Gagal");
     }
+  };
+
+  // Tampilan status badge
+  const statusBadge = (status) => {
+    const map = {
+      PENDING: { label: "Menunggu KF", className: "bg-amber-50 text-amber-700" },
+      APPROVED_KF: { label: "Disetujui KF", className: "bg-blue-50 text-blue-700" },
+    };
+    const s = map[status] || { label: status, className: "bg-gray-50 text-gray-700" };
+    return <span className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wider ${s.className}`}>{s.label}</span>;
   };
 
   return (
@@ -102,6 +120,12 @@ export default function Approval() {
               <div className="font-display text-lg">{s.nama_pegawai}</div>
               <div className="text-sm text-slate-500">{s.unit_kerja}</div>
               {s.keperluan && <div className="text-sm mt-2 text-slate-700">Keperluan: {s.keperluan}</div>}
+            </div>
+            <div className="mt-2 flex items-center gap-2">
+              {statusBadge(s.status)}
+              {s.status === "APPROVED_KF" && (
+                <span className="text-xs text-blue-600">(menunggu approval final)</span>
+              )}
             </div>
             <div className="mt-3 border-t border-slate-100 pt-3 space-y-1">
               {s.lines.map((l, i) => (
@@ -126,6 +150,9 @@ export default function Approval() {
             <div className="space-y-4">
               <div className="text-sm">
                 <span className="text-slate-500">Pegawai:</span> {selected.nama_pegawai} · {selected.unit_kerja}
+                <span className="ml-4 text-xs text-blue-600">
+                  ({selected.status === "APPROVED_KF" ? "Sudah disetujui KF" : "Menunggu KF"})
+                </span>
               </div>
 
               <div className="bg-slate-50 rounded p-3">
