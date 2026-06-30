@@ -197,7 +197,7 @@ export default function Users() {
                   <td className="px-4 py-2 font-medium">{u.name || "-"}</td>
                   <td className="font-mono-data text-xs">{u.username || "-"}</td>
                   <td>{u.unit_kerja || "-"}</td>
-                  <td>{u.jabatan_label || "staff"}</td>
+                  <td>{u.jabatan || "staff"}</td>
                   <td>
                     <span className="capitalize">{u.role || "-"}</span>
                   </td>
@@ -294,19 +294,14 @@ export default function Users() {
             <div>
               <Label>Fungsi</Label>
               <select
-                value={editUser.unit_kerja || ""}
-                onChange={(e) => setEditUser({ ...editUser, unit_kerja: e.target.value })}
+                value={newUser.unit_kerja}
+                onChange={(e) => setNewUser({ ...newUser, unit_kerja: e.target.value })}
                 className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
               >
                 <option value="">-- Pilih Fungsi --</option>
                 {fungsiList.map((f) => (
                   <option key={f} value={f}>{f}</option>
                 ))}
-                {/* Tambahkan opsi dinamis jika nilai yang sedang dipilih tidak ada di daftar */}
-                {editUser?.unit_kerja &&
-                  !fungsiList.includes(editUser.unit_kerja) && (
-                    <option value={editUser.unit_kerja}>{editUser.unit_kerja}</option>
-                  )}
               </select>
             </div>
             <div>
@@ -363,7 +358,7 @@ export default function Users() {
               <div><Label>Nama Lengkap</Label><div className="font-medium">{viewUser.name || "-"}</div></div>
               <div><Label>NIP</Label><div className="font-medium">{viewUser.nip || "-"}</div></div>
               <div><Label>Fungsi</Label><div className="font-medium">{viewUser.unit_kerja || "-"}</div></div>
-              <div><Label>Jabatan</Label><div className="font-medium">{viewUser.jabatan_label || "staff"}</div></div>
+              <div><Label>Jabatan</Label><div className="font-medium">{viewUser.jabatan || "staff"}</div></div>
               <div><Label>Peran</Label><div className="font-medium capitalize">{viewUser.role || "-"}</div></div>
               <div><Label>Terdaftar Sejak</Label><div className="font-medium">{viewUser.created_at ? fmtDate(viewUser.created_at) : "-"}</div></div>
             </div>
