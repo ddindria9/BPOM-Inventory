@@ -28,8 +28,8 @@ def generate_password(length=8):
 
 # Data user
 data_users = [
-    {"no": 1, "nama": "Benny Hendrawan Prabowo, S.Farm, Apt.", "nip": "19840401 200712 1 001", "jabatan": "Kepala Balai POM di Jember", "penugasan": "Kepala Balai POM di Jember", "email": "benyy.prabowo@pom.go.id", "role": "Administrator"},
-    {"no": 2, "nama": "Puji Lestari, SE", "nip": "19881017 201402 2 002", "jabatan": "Kepala Sub Bagian Tata Usaha pada Balai POM di Jember", "penugasan": "Kepala Sub Bagian Tata Usaha pada Balai POM di Jember", "email": "puji.lestari@pom.go.id", "role": "Approval"},
+    {"no": 1, "nama": "Benny Hendrawan Prabowo, S.Farm, Apt.", "nip": "19840401 200712 1 001", "jabatan": "Kepala Balai POM di Jember", "penugasan": "Tata Usaha", "email": "benyy.prabowo@pom.go.id", "role": "Administrator"},
+    {"no": 2, "nama": "Puji Lestari, SE", "nip": "19881017 201402 2 002", "jabatan": "Kepala Sub Bagian Tata Usaha pada Balai POM di Jember", "penugasan": "Tata Usaha", "email": "puji.lestari@pom.go.id", "role": "Approval"},
     {"no": 3, "nama": "Yusita Harminingsih, S.Farm., Apt", "nip": "19810531 200604 2 005", "jabatan": "Pengawas Farmasi dan Makanan Ahli Muda", "penugasan": "Pemeriksaan", "email": "yusita.harminingsih@pom.go.id", "role": "Pegawai - Staff"},
     {"no": 4, "nama": "Diana Pristawiti Novira, STP, M.Si", "nip": "19791109 200501 2 001", "jabatan": "Pengawas Farmasi dan Makanan Ahli Muda", "penugasan": "Informasi dan Komunikasi dan Pemeriksaan", "email": "diana.pristawiti@pom.go.id", "role": "Pegawai - Staff"},
     {"no": 5, "nama": "Wildansyah Azami, S.Farm, Apt", "nip": "19900717 201801 1 001", "jabatan": "Pengawas Farmasi dan Makanan Ahli Muda", "penugasan": "Pemeriksaan", "email": "wildansyah.azami@pom.go.id", "role": "Pegawai - Staff"},
