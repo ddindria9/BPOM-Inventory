@@ -1245,6 +1245,13 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
     today = now_utc()
     place_date = f"Jember, {today.day} {NAMA_BULAN_ID[today.month-1]} {today.year}"
     nomor_current = (spb.get("sbbk_nomor") if type_ == "sbbk" else spb.get("nomor")) or ""
+
+    def qr_img(qr_base64: str, width: int = 100) -> str:
+        """Convert base64 QR to HTML img tag."""
+        if not qr_base64:
+            return ""
+        return f'<img src="data:image/png;base64,{qr_base64}" style="width:{width}px;height:{width}px;display:block;margin:0 auto;" />'
+
     ctx = {
         "nomor": nomor_current,
         "no_surat": nomor_current,
@@ -1267,21 +1274,21 @@ def _build_ctx_rows(spb: dict, items_by_id: dict, type_: str):
         "kf_nip": spb.get("kf_approver_nip", ""),
         "kf_jabatan": spb.get("kf_approver_jabatan", ""),
         "kf_paraf": spb.get("kf_approver_paraf", ""),
-        "qr_kf": spb.get("qr_kf", ""),
+        "qr_kf": qr_img(spb.get("qr_kf", "")),
         # Approver Final
         "approver_name": spb.get("approver_name", ""),
         "approver_nip": spb.get("approver_nip", ""),
         "approver_jabatan": spb.get("approver_jabatan", ""),
         "approver_paraf": spb.get("approver_paraf", ""),
-        "qr_approver": spb.get("qr_approver", ""),
+        "qr_approver": qr_img(spb.get("qr_approver", "")),
         # Admin Gudang
         "admin_gudang_name": spb.get("admin_gudang_name", ""),
         "admin_gudang_nip": spb.get("admin_gudang_nip", ""),
-        "admin_gudang_qr": spb.get("admin_gudang_qr", ""),
+        "admin_gudang_qr": qr_img(spb.get("admin_gudang_qr", "")),
         # Penerima (untuk SBBK)
         "penerima_name": spb.get("nama_pegawai", ""),
         "penerima_nip": spb.get("nip_pegawai", ""),
-        "penerima_qr": spb.get("penerima_qr", ""), 
+        "penerima_qr": qr_img(spb.get("penerima_qr", "")),
     }
     return ctx, rows
     
