@@ -4,7 +4,7 @@ from pymongo import MongoClient
 # ========== KONFIGURASI ==========
 # Ganti dengan URL MongoDB dan nama database kamu
 MONGO_URL = "mongodb+srv://diniindriani459_db_user:YgMKrksbgYPkipaV@cluster0.fu8dak7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0&tlsAllowInvalidCertificates=true"
-DB_NAME = "dinindriani459_db_user"
+DB_NAME = "diniindriani459_db_user"
 
 # ========== DAFTAR USERNAME YANG AKAN DIHAPUS ==========
 usernames_to_delete = [
