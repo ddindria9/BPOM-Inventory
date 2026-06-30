@@ -294,14 +294,19 @@ export default function Users() {
             <div>
               <Label>Fungsi</Label>
               <select
-                value={newUser.unit_kerja}
-                onChange={(e) => setNewUser({ ...newUser, unit_kerja: e.target.value })}
+                value={editUser.unit_kerja || ""}
+                onChange={(e) => setEditUser({ ...editUser, unit_kerja: e.target.value })}
                 className="w-full h-10 px-3 border border-slate-200 rounded-md text-sm bg-white"
               >
                 <option value="">-- Pilih Fungsi --</option>
                 {fungsiList.map((f) => (
                   <option key={f} value={f}>{f}</option>
                 ))}
+                {/* Tambahkan opsi dinamis jika nilai yang sedang dipilih tidak ada di daftar */}
+                {editUser?.unit_kerja &&
+                  !fungsiList.includes(editUser.unit_kerja) && (
+                    <option value={editUser.unit_kerja}>{editUser.unit_kerja}</option>
+                  )}
               </select>
             </div>
             <div>
